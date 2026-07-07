@@ -1,0 +1,201 @@
+//! Command-line surface (clap derive). Two-tier `{noun} {verb}` layout, plus the
+//! simple top-level `auth`. A global `-j/--json` switches every command to JSON.
+
+use std::path::PathBuf;
+
+use clap::{Parser, Subcommand};
+
+#[derive(Debug, Parser)]
+#[command(
+    name = "xteams",
+    author,
+    version,
+    about = "Unofficial Microsoft Teams CLI (uses the local desktop app's credentials)",
+    arg_required_else_help = true
+)]
+pub struct Cli {
+    /// Override the Teams `Cookies` DB path (defaults to the signed-in work profile).
+    #[arg(long, global = true)]
+    pub cookies: Option<PathBuf>,
+
+    /// Emit machine-readable JSON instead of human-readable output.
+    #[arg(short = 'j', long, global = true)]
+    pub json: bool,
+
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Command {
+    /// Show the signed-in account and token status.
+    Auth,
+    /// Chats (1:1 and group conversations).
+    Chat {
+        #[command(subcommand)]
+        verb: ChatVerb,
+    },
+    /// Teams you belong to.
+    Team {
+        #[command(subcommand)]
+        verb: TeamVerb,
+    },
+    /// Channels within teams.
+    Channel {
+        #[command(subcommand)]
+        verb: ChannelVerb,
+    },
+    /// Threads (a root message and its replies).
+    Thread {
+        #[command(subcommand)]
+        verb: ThreadVerb,
+    },
+    /// Messages.
+    Message {
+        #[command(subcommand)]
+        verb: MessageVerb,
+    },
+    /// People / users.
+    User {
+        #[command(subcommand)]
+        verb: UserVerb,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ChatVerb {
+    /// List your recent chats/conversations.
+    List(ChatListArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum TeamVerb {
+    /// List the teams you belong to.
+    List,
+    /// Join a team by id.
+    Join(TeamRefArgs),
+    /// Search teams by name.
+    Search(QueryArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ChannelVerb {
+    /// List channels (optionally within a given team).
+    List(ChannelListArgs),
+    /// Search channels by name.
+    Search(QueryArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ThreadVerb {
+    /// List the messages in a thread (root message + replies).
+    List(ThreadListArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum MessageVerb {
+    /// Post a new message (top-level, or --reply-to a thread root).
+    New(MessageNewArgs),
+    /// List the last N messages in a conversation/channel.
+    List(MessageListArgs),
+    /// Read a single message by id.
+    Read(MessageRefArgs),
+    /// Edit a message you sent.
+    Edit(MessageEditArgs),
+    /// React to a message with an emoji.
+    React(MessageReactArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum UserVerb {
+    /// Search people by name or email.
+    Search(QueryArgs),
+}
+
+#[derive(Debug, clap::Args)]
+pub struct ChatListArgs {
+    /// Number of recent chats to list.
+    #[arg(short = 'n', long, default_value_t = 20)]
+    pub limit: u32,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct ChannelListArgs {
+    /// Optional team id (or name fragment) to scope the listing.
+    pub team: Option<String>,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct TeamRefArgs {
+    /// Team id.
+    pub team: String,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct QueryArgs {
+    /// Search query.
+    pub query: String,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct ThreadListArgs {
+    /// Conversation / channel id containing the thread.
+    pub conversation: String,
+    /// Root message id (the thread head).
+    pub message: String,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct MessageNewArgs {
+    /// Conversation / channel id.
+    pub conversation: String,
+    /// Message text (plain unless --html).
+    pub text: String,
+    /// Reply within the thread rooted at this message id.
+    #[arg(long)]
+    pub reply_to: Option<String>,
+    /// Treat `text` as raw RichText/Html.
+    #[arg(long)]
+    pub html: bool,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct MessageListArgs {
+    /// Conversation / channel id.
+    pub conversation: String,
+    /// Number of most-recent messages to show.
+    #[arg(short = 'n', long, default_value_t = 20)]
+    pub limit: u32,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct MessageRefArgs {
+    /// Conversation / channel id.
+    pub conversation: String,
+    /// Message id.
+    pub message: String,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct MessageEditArgs {
+    /// Conversation / channel id.
+    pub conversation: String,
+    /// Message id to edit (server id).
+    pub message: String,
+    /// New text.
+    pub text: String,
+    /// Treat `text` as raw RichText/Html.
+    #[arg(long)]
+    pub html: bool,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct MessageReactArgs {
+    /// Conversation / channel id.
+    pub conversation: String,
+    /// Message id to react to (server id).
+    pub message: String,
+    /// Emoji key (like, heart, laugh, surprised, sad, angry, …).
+    #[arg(default_value = "like")]
+    pub emoji: String,
+}

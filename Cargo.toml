@@ -1,0 +1,40 @@
+[package]
+name = "xteams"
+version = "0.1.0"
+edition = "2024"
+description = "Unofficial Microsoft Teams CLI that reuses the local desktop app's credentials"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "xteams"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env", "wrap_help"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+hmac = "0.12"
+sha1 = "0.10"
+base64 = "0.22"
+anyhow = "1"
+thiserror = "2"
+dirs = "5"
+urlencoding = "2"
+
+# v1 enforces the safety-critical denies; the full pedantic/nursery/cargo gate
+# from the programming skill is deferred to production hardening.
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = "symbols"

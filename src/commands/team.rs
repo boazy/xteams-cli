@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use anyhow::{Result, bail};
+use eyre::{Result, bail};
 
 use crate::cli::TeamVerb;
 

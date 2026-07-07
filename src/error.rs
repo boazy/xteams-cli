@@ -1,5 +1,5 @@
 //! Typed boundary errors. Libraries get precise variants (`thiserror`); the
-//! binary surfaces them through `anyhow` with added context.
+//! binary surfaces them through `eyre`/`color-eyre` with added context.
 
 use thiserror::Error;
 

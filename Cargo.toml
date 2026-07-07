@@ -22,10 +22,12 @@ pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 hmac = "0.12"
 sha1 = "0.10"
 base64 = "0.22"
-anyhow = "1"
 thiserror = "2"
 dirs = "5"
 urlencoding = "2"
+security-framework = "3.7.0"
+eyre = "0.6.12"
+color-eyre = "0.6.5"
 
 # v1 enforces the safety-critical denies; the full pedantic/nursery/cargo gate
 # from the programming skill is deferred to production hardening.

@@ -13,7 +13,8 @@ mod output;
 use clap::Parser;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> eyre::Result<()> {
+    color_eyre::install()?;
     let cli = cli::Cli::parse();
     commands::dispatch(cli).await
 }

@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use anyhow::Result;
+use eyre::Result;
 
 use crate::auth;
 use crate::model::AuthStatus;

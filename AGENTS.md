@@ -19,7 +19,7 @@ same change. Updating it is part of the definition of done.
 ## Conventions
 
 - No `unwrap`/`expect`/`panic` outside tests (clippy-denied). Use `?` + typed errors
-  (`thiserror` in libraries, `anyhow` in the binary).
+  (`thiserror` in libraries, `eyre` + `color-eyre` in the binary).
 - ≤ 250 pure LOC per file; split by responsibility.
 - Parse untrusted JSON into typed structs at the boundary (serde).
 - **Business logic never prints.** Commands return typed values; only

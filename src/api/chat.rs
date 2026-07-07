@@ -1,11 +1,11 @@
 //! Chat-service (IC3) operations: conversations, messages, threads, reactions.
 
-use anyhow::Result;
+use eyre::Result;
 use reqwest::Method;
 use serde_json::json;
 
 use super::ApiClient;
-use crate::model::{Conversation, ConversationsResponse, Message, MessagesResponse};
+use crate::model::{Conversation, ConversationsResponse, Message, MessagesResponse, Thread};
 
 pub async fn list_conversations(client: &ApiClient, limit: u32) -> Result<Vec<Conversation>> {
     let limit = limit.to_string();
@@ -37,6 +37,41 @@ pub async fn get_message(client: &ApiClient, conversation: &str, message: &str) 
     let request = client.chat(Method::GET, &path);
     let resp = client.exec(request, "GET message").await?;
     Ok(resp.json::<Message>().await?)
+}
+
+pub async fn list_threads(
+    client: &ApiClient,
+    conversation: &str,
+    limit: u32,
+    all_replies: bool,
+) -> Result<Vec<Thread>> {
+    let scan = limit.saturating_mul(3).clamp(50, 200);
+    let roots: Vec<Message> = get_messages(client, conversation, scan)
+        .await?
+        .into_iter()
+        .filter(Message::is_thread_root)
+        .take(limit as usize)
+        .collect();
+    let mut threads = Vec::with_capacity(roots.len());
+    for root in roots {
+        let replies = if all_replies {
+            reply_messages(client, conversation, &root).await?
+        } else {
+            Vec::new()
+        };
+        threads.push(Thread { root, replies });
+    }
+    Ok(threads)
+}
+
+async fn reply_messages(client: &ApiClient, conversation: &str, root: &Message) -> Result<Vec<Message>> {
+    let Some(root_id) = root.id.as_deref() else {
+        return Ok(Vec::new());
+    };
+    let mut messages = get_thread(client, conversation, root_id, 200).await?;
+    messages.retain(|m| m.id.as_deref() != Some(root_id));
+    messages.sort_by(|a, b| a.time_key().cmp(b.time_key()));
+    Ok(messages)
 }
 
 pub async fn post_message(

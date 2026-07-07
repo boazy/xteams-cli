@@ -88,8 +88,10 @@ pub enum ChannelVerb {
 
 #[derive(Debug, Subcommand)]
 pub enum ThreadVerb {
-    /// List the messages in a thread (root message + replies).
+    /// List threads in a conversation (the top-level message of each).
     List(ThreadListArgs),
+    /// Read one thread (root + all replies) in chronological order.
+    Read(ThreadReadArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -139,9 +141,21 @@ pub struct QueryArgs {
 
 #[derive(Debug, clap::Args)]
 pub struct ThreadListArgs {
+    /// Conversation / channel id.
+    pub conversation: String,
+    /// Number of most-recent threads to list.
+    #[arg(short = 'n', long, default_value_t = 20)]
+    pub limit: u32,
+    /// Include all replies for each thread (not just the top-level message).
+    #[arg(short = 'a', long)]
+    pub all_replies: bool,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct ThreadReadArgs {
     /// Conversation / channel id containing the thread.
     pub conversation: String,
-    /// Root message id (the thread head).
+    /// Root (top-level) message id of the thread.
     pub message: String,
 }
 

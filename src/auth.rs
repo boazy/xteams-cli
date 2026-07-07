@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use anyhow::Result;
+use eyre::Result;
 use base64::Engine as _;
 use serde::Deserialize;
 

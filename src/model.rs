@@ -63,6 +63,24 @@ pub struct Message {
     pub im_display_name: Option<String>,
     #[serde(rename = "messagetype", default)]
     pub message_type: Option<String>,
+    #[serde(rename = "rootMessageId", default)]
+    pub root_message_id: Option<String>,
+    #[serde(rename = "sequenceId", default)]
+    pub sequence_id: Option<i64>,
+}
+
+impl Message {
+    pub fn is_thread_root(&self) -> bool {
+        match (&self.id, &self.root_message_id) {
+            (Some(id), Some(root)) => id == root,
+            (Some(_), None) => true,
+            _ => false,
+        }
+    }
+
+    pub fn time_key(&self) -> &str {
+        self.original_arrival_time.as_deref().or(self.compose_time.as_deref()).unwrap_or("")
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -84,4 +102,10 @@ pub struct MessageAction {
     pub message_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emoji: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Thread {
+    pub root: Message,
+    pub replies: Vec<Message>,
 }

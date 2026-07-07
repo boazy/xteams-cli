@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use anyhow::Result;
+use eyre::Result;
 
 use crate::api::{ApiClient, chat};
 use crate::cli::ChannelVerb;

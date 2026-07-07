@@ -6,11 +6,12 @@
 //! secret in the login Keychain. This mirrors the proven PoC in `poc/`.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use aes::Aes128;
-use anyhow::{Context, Result, anyhow};
+use eyre::{Context, Result, eyre};
 use cbc::cipher::{BlockDecryptMut, KeyIvInit, block_padding::Pkcs7};
+use security_framework::item::{ItemClass, ItemSearchOptions, SearchResult};
+use security_framework::passwords::get_generic_password;
 
 use crate::error::CredsError;
 
@@ -21,6 +22,9 @@ const KEYCHAIN_ACCOUNT: &str = "Microsoft Teams";
 const PBKDF2_SALT: &[u8] = b"saltysalt";
 const PBKDF2_ROUNDS: u32 = 1003;
 const DOMAIN_HASH_LEN: usize = 32;
+/// `errSecItemNotFound`, defined locally to avoid pulling in `security-framework-sys`
+/// just for one stable OSStatus constant.
+const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
 
 /// The two auth cookies the internal Teams APIs consume.
 #[derive(Debug, Clone)]
@@ -33,7 +37,7 @@ pub struct TeamsCookies {
 
 /// Default cookie store for the signed-in work profile (`WV2Profile_tfw`).
 pub fn default_cookies_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| anyhow!("cannot resolve home directory"))?;
+    let home = dirs::home_dir().ok_or_else(|| eyre!("cannot resolve home directory"))?;
     Ok(home.join(
         "Library/Containers/com.microsoft.teams2/Data/Library/Application Support/\
 Microsoft/MSTeams/EBWebView/WV2Profile_tfw/Cookies",
@@ -65,38 +69,33 @@ pub fn load_cookies(cookies_db: &Path) -> Result<TeamsCookies> {
 fn derive_cookie_key() -> Result<[u8; 16]> {
     let secret = keychain_secret()?;
     let mut key = [0u8; 16];
-    pbkdf2::pbkdf2_hmac::<sha1::Sha1>(secret.trim().as_bytes(), PBKDF2_SALT, PBKDF2_ROUNDS, &mut key);
+    pbkdf2::pbkdf2_hmac::<sha1::Sha1>(&secret, PBKDF2_SALT, PBKDF2_ROUNDS, &mut key);
     Ok(key)
 }
 
-fn keychain_secret() -> Result<String> {
-    let primary =
-        run_security(&["find-generic-password", "-w", "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT])?;
-    if let Some(secret) = primary {
-        return Ok(secret);
+/// Read the "Safe Storage" secret from the login Keychain in-process (via
+/// `security-framework`): by service + account, then a service-only fallback.
+fn keychain_secret() -> Result<Vec<u8>> {
+    match get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT) {
+        Ok(secret) => Ok(secret),
+        Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => keychain_secret_by_service()
+            .ok_or_else(|| CredsError::Keychain("item not found".to_owned()).into()),
+        Err(e) => Err(CredsError::Keychain(e.to_string()).into()),
     }
-    // Retry without the account filter in case the acct attribute differs.
-    let fallback = run_security(&["find-generic-password", "-w", "-s", KEYCHAIN_SERVICE])?;
-    fallback.ok_or_else(|| CredsError::Keychain("item not found".to_owned()).into())
 }
 
-/// Run `/usr/bin/security`; `Ok(None)` means "not found", `Err` means it failed.
-fn run_security(args: &[&str]) -> Result<Option<String>> {
-    let output = Command::new("/usr/bin/security")
-        .args(args)
-        .output()
-        .context("failed to run /usr/bin/security")?;
-    if output.status.success() {
-        let secret = String::from_utf8(output.stdout).context("keychain secret is not UTF-8")?;
-        Ok(Some(secret))
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("could not be found") {
-            Ok(None)
-        } else {
-            Err(CredsError::Keychain(stderr.trim().to_owned()).into())
-        }
-    }
+/// Fallback: locate the Safe Storage item by service name alone (any account).
+fn keychain_secret_by_service() -> Option<Vec<u8>> {
+    let results = ItemSearchOptions::new()
+        .class(ItemClass::generic_password())
+        .service(KEYCHAIN_SERVICE)
+        .load_data(true)
+        .search()
+        .ok()?;
+    results.into_iter().find_map(|r| match r {
+        SearchResult::Data(data) => Some(data),
+        _ => None,
+    })
 }
 
 /// Decrypt one Chromium `v10` cookie value; `None` if not decryptable/printable.

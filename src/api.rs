@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use anyhow::Result;
+use eyre::Result;
 use reqwest::Method;
 
 use crate::auth::{self, Session};

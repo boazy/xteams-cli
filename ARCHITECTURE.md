@@ -55,8 +55,9 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
 - **Decryption**: Chromium `v10`/`v11` values, **AES-128-CBC**, IV = 16 spaces.
   - Key = `PBKDF2-HMAC-SHA1(secret, salt="saltysalt", iterations=1003, len=16)`.
   - `secret` = Keychain generic password, service `"Microsoft Teams Safe Storage"`,
-    account `"Microsoft Teams"`, read via `/usr/bin/security -w` (GUI prompt on first
-    access; falls back to service-only lookup).
+    account `"Microsoft Teams"`, read **in-process** via the `security-framework` crate
+    (`passwords::get_generic_password`; GUI prompt on first access by the `xteams`
+    binary itself; falls back to a service-only `ItemSearchOptions` search).
   - After PKCS7 unpad, Chromium ≥ M127 prepends a **32-byte `SHA256(host)`** to the
     plaintext; we return whichever candidate (with/without the 32-byte prefix) is
     valid printable UTF-8.
@@ -96,7 +97,7 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
 | List conversations | `GET conversations?view=msnp24Equivalent&pageSize=N&startTime=1` | Includes both chats and channels. |
 | List messages | `GET conversations/{conv}/messages?pageSize=N&startTime=1` | |
 | Read one message | `GET conversations/{conv}/messages/{id}` | |
-| Thread replies | messages of `{conv};messageid={rootId}` | Channel threads are addressed by appending `;messageid=<root>` to the conversation id. |
+| Read a thread | `GET` messages of `{conv};messageid={rootId}` | Root + replies for one thread (`thread read`). Channel threads are addressed by appending `;messageid=<root>` to the conversation id. |
 | Post | `POST conversations/{target}/messages` | Body: `content`, `messagetype:"RichText/Html"`, `contenttype:"text"`, `imdisplayname`, `clientmessageid`. Reply → `target = {conv};messageid={root}`. |
 | Edit | `PUT conversations/{conv}/messages/{id}` | Body adds `skypeeditedid:"{id}"`. |
 | React | `PUT conversations/{conv}/messages/{id}/properties?name=emotions` | Body: `{emotions:{key:<emoji>, value:<epoch-ms>}}`. |
@@ -104,13 +105,19 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
 - **Server message id**: on POST, read from the `Location` response header (last path
   segment), falling back to `OriginalArrivalTime` in the body. Use *that* id for
   edit/react — not the echoed `clientmessageid`.
+- **Threads**: every message carries `rootMessageId`; it is a thread **root** iff
+  `id == rootMessageId`, otherwise a reply pointing at that root. `thread list` scans
+  the flat message stream, keeps roots (most-recent first, up to `-n`), and with `-a`
+  fetches each root's replies via the `;messageid=` endpoint. `thread read <root>`
+  returns one thread (root + replies) sorted chronologically.
 - Plain text is HTML-escaped and `\n`→`<br>`; `--html` sends `text` verbatim.
 
 ## 6. Data & output
 
 - `model.rs`: `Conversation` (+ `is_channel()` = id contains `@thread.tacv2`,
-  `topic()`), `Message`, `AuthStatus`, `MessageAction`, and response wrappers. All
-  are `Serialize` (JSON).
+  `topic()`), `Message` (+ `root_message_id`/`sequence_id`, `is_thread_root()`,
+  `time_key()`), `Thread` (`{ root, replies }`), `AuthStatus`, `MessageAction`, and
+  response wrappers. All are `Serialize` (JSON).
 - `output.rs` is the **only** module that writes to stdout:
   - `trait DisplayOutput { fn display_output(&self) -> String; }`
   - `render<T: Serialize + DisplayOutput>(value, json)` → JSON (`serde_json`
@@ -118,6 +125,8 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
   - `MessageList(Vec<Message>)` — filters empty/system messages and sorts
     chronologically for human display; `#[serde(transparent)]` so JSON keeps the full
     data.
+  - `ThreadList(Vec<Thread>)` — renders each thread's root, with replies indented
+    beneath (when `-a`); transparent JSON is an array of `{ root, replies }`.
   - Blanket `impl DisplayOutput for Vec<T>`.
 - **Business logic never prints.** `commands/*` handlers return values; the dispatcher
   calls `render`. Future color/table modes extend `output.rs` only.
@@ -130,14 +139,16 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
 - `chat list` → `Vec<Conversation>` (channels excluded via `is_channel`)
 - `channel list [team]` / `channel search <q>` → channels derived from the
   conversation list, filtered by case-insensitive substring on topic/id
-- `message new/list/read/edit/react`, `thread list` → chat-service ops
+- `message new/list/read/edit/react` → chat-service ops
+- `thread list <conv> [-n] [-a]` → threads (roots via `list_threads`; `-a` adds each
+  root's replies); `thread read <conv> <root>` → one thread chronologically
 - `team`, `user` → deferred (§9)
 
 ## 8. Conventions / invariants
 
 - No `unwrap`/`expect`/`panic` outside tests (clippy-denied in `Cargo.toml`). Use `?`
   + typed errors.
-- `thiserror` at library boundaries; `anyhow` in the binary.
+- `thiserror` at library boundaries; `eyre` (+ `color-eyre` reports) in the binary.
 - ≤ 250 pure LOC per file; split by responsibility.
 - Region/hosts come from `regionGtms` — never hardcode.
 - Parse untrusted JSON into typed structs at the boundary (serde).
@@ -163,10 +174,13 @@ Blocked features need audiences we cannot currently obtain:
   extractable JWTs). New Teams uses the native **OneAuth** broker; the refresh token
   lives in an encrypted OneAuth cache (Keychain/file), not found under common service
   names.
-- **Path to unlock**: extract a FOCI refresh token from the OneAuth cache, then mint
-  per-audience access tokens via the AAD `/token` endpoint with the Teams first-party
-  client id. Reference material: `poc/probe_*.py` (endpoint + audience probes),
-  `poc/extract_teams_creds.py` (the working credential chain).
+- **Path to unlock**: the OneAuth refresh-token cache is Keychain items scoped to the
+  app's entitlement (`com.microsoft.oneauth.<oid>` — an unsigned CLI cannot read them),
+  so direct extraction is blocked. The viable route is a **device-code + FOCI** login
+  to obtain a family refresh token, then mint per-audience access tokens via the AAD
+  `/token` endpoint. Full investigation brief + PoC/integration plan:
+  **[docs/oneauth-handoff.md](docs/oneauth-handoff.md)**. Reference material:
+  `poc/probe_*.py`, `poc/extract_teams_creds.py`.
 
 ## 10. Windows (future)
 

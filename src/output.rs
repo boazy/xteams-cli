@@ -2,10 +2,10 @@
 //! writes them out — as human text (`DisplayOutput`) or JSON (`serde`). Future
 //! color/table modes extend here without touching business logic.
 
-use anyhow::Result;
+use eyre::Result;
 use serde::Serialize;
 
-use crate::model::{AuthStatus, Conversation, Message, MessageAction};
+use crate::model::{AuthStatus, Conversation, Message, MessageAction, Thread};
 
 pub trait DisplayOutput {
     fn display_output(&self) -> String;
@@ -42,8 +42,30 @@ impl DisplayOutput for MessageList {
             .iter()
             .filter(|m| !html_to_text(m.content.as_deref().unwrap_or("")).is_empty())
             .collect();
-        visible.sort_by(|a, b| time_key(a).cmp(time_key(b)));
+        visible.sort_by(|a, b| a.time_key().cmp(b.time_key()));
         visible.iter().map(|m| m.display_output()).collect::<Vec<_>>().join("\n")
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(transparent)]
+pub struct ThreadList(pub Vec<Thread>);
+
+impl DisplayOutput for ThreadList {
+    fn display_output(&self) -> String {
+        let sep = if self.0.iter().any(|t| !t.replies.is_empty()) { "\n\n" } else { "\n" };
+        self.0.iter().map(DisplayOutput::display_output).collect::<Vec<_>>().join(sep)
+    }
+}
+
+impl DisplayOutput for Thread {
+    fn display_output(&self) -> String {
+        let mut out = self.root.display_output();
+        for reply in &self.replies {
+            out.push('\n');
+            out.push_str(&indent(&reply.display_output(), "    "));
+        }
+        out
     }
 }
 
@@ -109,8 +131,8 @@ impl DisplayOutput for AuthStatus {
     }
 }
 
-fn time_key(message: &Message) -> &str {
-    message.original_arrival_time.as_deref().or(message.compose_time.as_deref()).unwrap_or("")
+fn indent(text: &str, prefix: &str) -> String {
+    text.lines().map(|line| format!("{prefix}{line}")).collect::<Vec<_>>().join("\n")
 }
 
 fn html_to_text(html: &str) -> String {

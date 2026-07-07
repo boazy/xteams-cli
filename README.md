@@ -56,7 +56,8 @@ xteams message read <conversation> <id>        # a single message
 xteams message new  <conversation> <text> [--reply-to <id>] [--html]
 xteams message edit <conversation> <id> <text> [--html]
 xteams message react <conversation> <id> [emoji]      # emoji defaults to "like"
-xteams thread list  <conversation> <root-id>   # a thread's replies
+xteams thread list <conversation> [-n N] [-a]  # threads in a conversation (top-level msg each; -a adds replies)
+xteams thread read <conversation> <root-id>    # one thread: root + replies, chronological
 ```
 
 `<conversation>` is a Teams conversation id — a channel (`19:...@thread.tacv2`) or a

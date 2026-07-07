@@ -9,7 +9,7 @@ mod team;
 mod thread;
 mod user;
 
-use anyhow::Result;
+use eyre::Result;
 
 use crate::cli::{Cli, Command};
 use crate::output::render;

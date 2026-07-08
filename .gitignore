@@ -1,3 +1,4 @@
 .omo/
+.ruff_cache/
 poc/
 target/

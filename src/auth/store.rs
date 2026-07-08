@@ -1,8 +1,6 @@
 //! macOS Keychain store for the FOCI refresh token (device-code path), via the same
 //! `security-framework` crate as creds.rs. The token lives in our own item (service
-//! `xteams`, account `foci-refresh`) — never a plaintext file. Gated on the §B PoC
-//! proof; the `dead_code` allowance is removed once `login`/`token_for` consume it.
-#![allow(dead_code)]
+//! `xteams`, account `foci-refresh`) — never a plaintext file.
 
 use security_framework::passwords::{
     delete_generic_password, get_generic_password, set_generic_password,
@@ -33,7 +31,7 @@ fn save(account: &str, token: &str) -> Result<(), TokenStoreError> {
 
 fn load(account: &str) -> Result<Option<String>, TokenStoreError> {
     match get_generic_password(SERVICE, account) {
-        Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).into_owned())),
+        Ok(bytes) => Ok(Some(String::from_utf8(bytes).map_err(|e| TokenStoreError::Read(e.to_string()))?)),
         Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(None),
         Err(e) => Err(TokenStoreError::Read(e.to_string())),
     }

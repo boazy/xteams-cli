@@ -30,6 +30,10 @@ pub struct Cli {
 pub enum Command {
     /// Show the signed-in account and token status.
     Auth,
+    /// Sign in via device code (unlocks team, user, and calendar).
+    Login,
+    /// Remove the stored device-code sign-in.
+    Logout,
     /// Chats (1:1 and group conversations).
     Chat {
         #[command(subcommand)]
@@ -59,6 +63,11 @@ pub enum Command {
     User {
         #[command(subcommand)]
         verb: UserVerb,
+    },
+    /// Your calendar (Microsoft Graph).
+    Calendar {
+        #[command(subcommand)]
+        verb: CalendarVerb,
     },
 }
 
@@ -114,6 +123,12 @@ pub enum UserVerb {
     Search(QueryArgs),
 }
 
+#[derive(Debug, Subcommand)]
+pub enum CalendarVerb {
+    /// List upcoming events.
+    List(CalendarListArgs),
+}
+
 #[derive(Debug, clap::Args)]
 pub struct ChatListArgs {
     /// Number of recent chats to list.
@@ -137,6 +152,13 @@ pub struct TeamRefArgs {
 pub struct QueryArgs {
     /// Search query.
     pub query: String,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct CalendarListArgs {
+    /// Number of days ahead to include.
+    #[arg(short = 'd', long, default_value_t = 7)]
+    pub days: i64,
 }
 
 #[derive(Debug, clap::Args)]

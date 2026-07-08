@@ -52,17 +52,26 @@ pub enum ApiError {
 /// Failures acquiring or minting AAD tokens (device-code + refresh grants).
 #[derive(Debug, Error)]
 pub enum OAuthError {
+    #[error("device-code request failed: HTTP {status}: {body}")]
+    DeviceCodeRequest { status: u16, body: String },
+
     #[error("sign-in was declined in the browser")]
     AuthorizationDeclined,
 
     #[error("the device code expired before sign-in completed; re-run to get a new code")]
     DeviceCodeExpired,
 
+    #[error("sign-in did not complete within the allotted time")]
+    Timeout,
+
     #[error("token endpoint returned HTTP {status}: {error}: {description}")]
     TokenEndpoint { status: u16, error: String, description: String },
 
     #[error("token response was missing the '{0}' field")]
     MissingField(&'static str),
+
+    #[error("not signed in for this feature — run `xteams login` first")]
+    NotLoggedIn,
 }
 
 /// Failures reading/writing the refresh token in the macOS Keychain.

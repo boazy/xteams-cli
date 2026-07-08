@@ -1,10 +1,7 @@
 //! Pure OAuth 2.0 device-code + refresh-grant decision logic: response parsing,
 //! poll-error classification, and access-token cache expiry. No I/O lives here —
 //! the network calls are in `device_code.rs` and the refresh grant in `auth.rs`;
-//! this is the testable core. Consumers (`team`/`user`/`calendar`) are gated on the
-//! live PoC proof (docs/oneauth-handoff.md §B); the `dead_code` allowance is removed
-//! once those commands consume this module.
-#![allow(dead_code)]
+//! this is the testable core, consumed by `device_code.rs` and `authenticator.rs`.
 
 use serde::Deserialize;
 
@@ -14,6 +11,14 @@ pub const FOCI_CLIENT: &str = "1fec8e78-bce4-4aaf-ab1b-5451cc387264";
 pub const DEVICE_CODE_GRANT: &str = "urn:ietf:params:oauth:grant-type:device_code";
 const DEFAULT_TTL_SECS: i64 = 3600;
 
+pub fn token_url(tenant: &str) -> String {
+    format!("https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token")
+}
+
+pub fn devicecode_url(tenant: &str) -> String {
+    format!("https://login.microsoftonline.com/{tenant}/oauth2/v2.0/devicecode")
+}
+
 const fn default_interval() -> u64 {
     5
 }
@@ -22,7 +27,7 @@ const fn default_expiry() -> u64 {
     900
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct DeviceCodeResponse {
     pub device_code: String,
     pub user_code: String,
@@ -33,17 +38,13 @@ pub struct DeviceCodeResponse {
     pub expires_in: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct TokenResponse {
     pub access_token: String,
     #[serde(default)]
     pub refresh_token: Option<String>,
     #[serde(default)]
     pub expires_in: Option<i64>,
-    #[serde(default)]
-    pub scope: Option<String>,
-    #[serde(default)]
-    pub foci: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -54,7 +55,6 @@ struct OAuthErrorBody {
 }
 
 /// Next action after one device-code token poll.
-#[derive(Debug)]
 pub enum PollOutcome {
     Complete(Box<TokenResponse>),
     Pending,
@@ -103,7 +103,7 @@ pub fn parse_token(body: &[u8]) -> Result<TokenResponse, OAuthError> {
 }
 
 /// A minted access token with an absolute expiry, for the per-audience cache.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CachedToken {
     pub value: String,
     pub expires_at_unix: i64,
@@ -133,9 +133,8 @@ mod tests {
         match outcome {
             PollOutcome::Complete(tokens) => {
                 assert_eq!(tokens.refresh_token.as_deref(), Some("0.rt"));
-                assert_eq!(tokens.foci.as_deref(), Some("1"));
             }
-            other => panic!("expected Complete, got {other:?}"),
+            _ => panic!("expected PollOutcome::Complete"),
         }
     }
 

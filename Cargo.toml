@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -28,6 +28,8 @@ urlencoding = "2"
 security-framework = "3.7.0"
 eyre = "0.6.12"
 color-eyre = "0.6.5"
+time = { version = "0.3", default-features = false, features = ["std", "formatting"] }
+uuid = { version = "1", features = ["v4"] }
 
 # v1 enforces the safety-critical denies; the full pedantic/nursery/cargo gate
 # from the programming skill is deferred to production hardening.

@@ -14,8 +14,12 @@ use serde::Deserialize;
 use crate::creds::{self, TeamsCookies};
 use crate::error::AuthError;
 
+mod authenticator;
+mod device_code;
 mod oauth;
 mod store;
+
+pub use authenticator::{Authenticator, logout};
 
 const AUTHZ_URL: &str = "https://authsvc.teams.microsoft.com/v1.0/authz";
 const USER_AGENT: &str = "xteams-cli/0.1 (Teams-compatible)";
@@ -53,7 +57,20 @@ pub async fn connect(cookies: Option<&Path>) -> Result<(reqwest::Client, Session
 }
 
 pub fn build_client() -> Result<reqwest::Client> {
-    Ok(reqwest::Client::builder().user_agent(USER_AGENT).build()?)
+    Ok(reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?)
+}
+
+const DEFAULT_TENANT: &str = "organizations";
+
+pub async fn load_authenticator() -> Result<Authenticator> {
+    Authenticator::load(build_client()?, DEFAULT_TENANT).await
+}
+
+pub async fn login_authenticator() -> Result<Authenticator> {
+    Authenticator::login(build_client()?, DEFAULT_TENANT).await
 }
 
 impl Session {

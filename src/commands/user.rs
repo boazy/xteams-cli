@@ -1,15 +1,20 @@
-//! `user` commands (Phase 3 — pending a substrate-audience token).
+//! `user` commands. `search` finds people via substrate people-search using a
+//! device-code bearer token; run `xteams login` first.
 
-use std::path::Path;
+use eyre::Result;
 
-use eyre::{Result, bail};
-
+use crate::api::substrate;
+use crate::auth;
 use crate::cli::UserVerb;
+use crate::output::render;
 
-pub async fn dispatch(verb: UserVerb, _cookies: Option<&Path>, _json: bool) -> Result<()> {
+const SEARCH_LIMIT: u32 = 15;
+
+pub async fn dispatch(verb: UserVerb, json: bool) -> Result<()> {
+    let authenticator = auth::load_authenticator().await?;
     match verb {
-        UserVerb::Search(_) => {
-            bail!("user search is deferred (needs a substrate-audience token via OneAuth minting)")
+        UserVerb::Search(args) => {
+            render(&substrate::search_people(&authenticator, &args.query, SEARCH_LIMIT).await?, json)
         }
     }
 }

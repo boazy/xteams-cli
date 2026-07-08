@@ -5,7 +5,10 @@
 use eyre::Result;
 use serde::Serialize;
 
-use crate::model::{AuthStatus, Conversation, Message, MessageAction, Thread};
+use crate::model::{
+    AuthAction, AuthStatus, CalendarEvent, Conversation, Message, MessageAction, Person, Team,
+    Thread,
+};
 
 pub trait DisplayOutput {
     fn display_output(&self) -> String;
@@ -94,6 +97,53 @@ impl DisplayOutput for Conversation {
     }
 }
 
+impl DisplayOutput for Person {
+    fn display_output(&self) -> String {
+        let name = self.display_name.as_deref().unwrap_or("(unknown)");
+        let mut line = name.to_owned();
+        if let Some(email) = self.email_addresses.first() {
+            line.push_str(&format!("  <{email}>"));
+        }
+        if let Some(title) = self.job_title.as_deref().filter(|t| !t.is_empty()) {
+            line.push_str(&format!("  — {title}"));
+        }
+        line
+    }
+}
+
+impl DisplayOutput for Team {
+    fn display_output(&self) -> String {
+        let count = self.channels.len();
+        let plural = if count == 1 { "" } else { "s" };
+        format!("{}\n    {}  ({count} channel{plural})", self.id, self.display_name)
+    }
+}
+
+impl DisplayOutput for CalendarEvent {
+    fn display_output(&self) -> String {
+        let when = self.start.as_ref().and_then(|s| s.date_time.as_deref()).unwrap_or("");
+        let subject = self.subject.as_deref().unwrap_or("(no subject)");
+        let mut line = format!("[{when}] {subject}");
+        if let Some(name) =
+            self.organizer.as_ref().and_then(|o| o.email_address.as_ref()).and_then(|e| e.name.as_deref())
+        {
+            line.push_str(&format!("  — {name}"));
+        }
+        if let Some(place) =
+            self.location.as_ref().and_then(|l| l.display_name.as_deref()).filter(|p| !p.is_empty())
+        {
+            line.push_str(&format!("  @ {place}"));
+        }
+        if self.is_online_meeting {
+            line.push_str("  (online)");
+        }
+        if self.is_cancelled {
+            line.push_str("  [CANCELLED]");
+        }
+        line
+    }
+}
+
 impl DisplayOutput for Message {
     fn display_output(&self) -> String {
         let text = html_to_text(self.content.as_deref().unwrap_or(""));
@@ -112,6 +162,12 @@ impl DisplayOutput for MessageAction {
             }
             None => format!("{} message {} in {}", self.action, self.message_id, self.conversation),
         }
+    }
+}
+
+impl DisplayOutput for AuthAction {
+    fn display_output(&self) -> String {
+        if self.signed_in { "Signed in.".to_owned() } else { "Signed out.".to_owned() }
     }
 }
 

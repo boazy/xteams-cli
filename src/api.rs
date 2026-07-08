@@ -8,7 +8,10 @@ use reqwest::Method;
 use crate::auth::{self, Session};
 use crate::error::ApiError;
 
+pub mod calendar;
 pub mod chat;
+pub mod csa;
+pub mod substrate;
 
 const AUTH_HEADER: &str = "Authentication";
 
@@ -36,18 +39,27 @@ impl ApiClient {
     }
 
     async fn exec(&self, request: reqwest::RequestBuilder, endpoint: &str) -> Result<reqwest::Response> {
-        let resp = request.send().await?;
-        let status = resp.status();
-        if status.is_success() {
-            Ok(resp)
-        } else {
-            let body = resp.text().await.unwrap_or_default();
-            Err(ApiError::Http {
-                endpoint: endpoint.to_owned(),
-                status: status.as_u16(),
-                body: body.chars().take(240).collect(),
-            }
-            .into())
+        send_ok(request, endpoint).await
+    }
+}
+
+/// Send a request and map any non-2xx response to `ApiError::Http`. Shared by the
+/// skypetoken chat path and the bearer-token (chatsvcagg/substrate/graph) paths.
+pub(crate) async fn send_ok(
+    request: reqwest::RequestBuilder,
+    endpoint: &str,
+) -> Result<reqwest::Response> {
+    let resp = request.send().await?;
+    let status = resp.status();
+    if status.is_success() {
+        Ok(resp)
+    } else {
+        let body = resp.text().await.unwrap_or_default();
+        Err(ApiError::Http {
+            endpoint: endpoint.to_owned(),
+            status: status.as_u16(),
+            body: body.chars().take(240).collect(),
         }
+        .into())
     }
 }

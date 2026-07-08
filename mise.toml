@@ -1,0 +1,7 @@
+[tasks.build]
+description = "Build a dev binary"
+run = "cargo build"
+
+[tasks.install]
+description = "Build and install a release binary"
+run = "cargo install --path ."

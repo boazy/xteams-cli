@@ -14,6 +14,9 @@ use serde::Deserialize;
 use crate::creds::{self, TeamsCookies};
 use crate::error::AuthError;
 
+mod oauth;
+mod store;
+
 const AUTHZ_URL: &str = "https://authsvc.teams.microsoft.com/v1.0/authz";
 const USER_AGENT: &str = "xteams-cli/0.1 (Teams-compatible)";
 

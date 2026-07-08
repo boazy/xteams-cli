@@ -48,3 +48,32 @@ pub enum ApiError {
         body: String,
     },
 }
+
+/// Failures acquiring or minting AAD tokens (device-code + refresh grants).
+#[derive(Debug, Error)]
+pub enum OAuthError {
+    #[error("sign-in was declined in the browser")]
+    AuthorizationDeclined,
+
+    #[error("the device code expired before sign-in completed; re-run to get a new code")]
+    DeviceCodeExpired,
+
+    #[error("token endpoint returned HTTP {status}: {error}: {description}")]
+    TokenEndpoint { status: u16, error: String, description: String },
+
+    #[error("token response was missing the '{0}' field")]
+    MissingField(&'static str),
+}
+
+/// Failures reading/writing the refresh token in the macOS Keychain.
+#[derive(Debug, Error)]
+pub enum TokenStoreError {
+    #[error("Keychain write failed: {0}")]
+    Write(String),
+
+    #[error("Keychain read failed: {0}")]
+    Read(String),
+
+    #[error("Keychain delete failed: {0}")]
+    Delete(String),
+}

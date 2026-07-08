@@ -7,6 +7,7 @@ mod cli;
 mod commands;
 mod creds;
 mod error;
+mod link;
 mod model;
 mod output;
 

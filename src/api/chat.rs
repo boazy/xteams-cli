@@ -46,12 +46,13 @@ pub async fn list_threads(
     all_replies: bool,
 ) -> Result<Vec<Thread>> {
     let scan = limit.saturating_mul(3).clamp(50, 200);
-    let roots: Vec<Message> = get_messages(client, conversation, scan)
+    let mut roots: Vec<Message> = get_messages(client, conversation, scan)
         .await?
         .into_iter()
         .filter(Message::is_thread_root)
         .take(limit as usize)
         .collect();
+    roots.sort_by(|a, b| a.time_key().cmp(b.time_key()));
     let mut threads = Vec::with_capacity(roots.len());
     for root in roots {
         let replies = if all_replies {

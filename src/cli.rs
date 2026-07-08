@@ -141,7 +141,7 @@ pub struct QueryArgs {
 
 #[derive(Debug, clap::Args)]
 pub struct ThreadListArgs {
-    /// Conversation / channel id.
+    /// Conversation / channel id, or a Teams deep link.
     pub conversation: String,
     /// Number of most-recent threads to list.
     #[arg(short = 'n', long, default_value_t = 20)]
@@ -153,19 +153,20 @@ pub struct ThreadListArgs {
 
 #[derive(Debug, clap::Args)]
 pub struct ThreadReadArgs {
-    /// Conversation / channel id containing the thread.
+    /// Conversation / channel id, or a Teams deep link.
     pub conversation: String,
-    /// Root (top-level) message id of the thread.
-    pub message: String,
+    /// Root (top-level) message id (optional if a message link supplies it).
+    pub message: Option<String>,
 }
 
 #[derive(Debug, clap::Args)]
 pub struct MessageNewArgs {
-    /// Conversation / channel id.
+    /// Conversation / channel id, or a Teams deep link.
     pub conversation: String,
     /// Message text (plain unless --html).
     pub text: String,
-    /// Reply within the thread rooted at this message id.
+    /// Reply within the thread rooted at this message id (a message link fills
+    /// this automatically).
     #[arg(long)]
     pub reply_to: Option<String>,
     /// Treat `text` as raw RichText/Html.
@@ -175,7 +176,7 @@ pub struct MessageNewArgs {
 
 #[derive(Debug, clap::Args)]
 pub struct MessageListArgs {
-    /// Conversation / channel id.
+    /// Conversation / channel id, or a Teams deep link.
     pub conversation: String,
     /// Number of most-recent messages to show.
     #[arg(short = 'n', long, default_value_t = 20)]
@@ -184,20 +185,21 @@ pub struct MessageListArgs {
 
 #[derive(Debug, clap::Args)]
 pub struct MessageRefArgs {
-    /// Conversation / channel id.
+    /// Conversation / channel id, or a Teams deep link.
     pub conversation: String,
-    /// Message id.
-    pub message: String,
+    /// Message id (optional if a message link supplies it).
+    pub message: Option<String>,
 }
 
 #[derive(Debug, clap::Args)]
 pub struct MessageEditArgs {
-    /// Conversation / channel id.
+    /// Conversation / channel id, or a Teams deep link.
     pub conversation: String,
-    /// Message id to edit (server id).
-    pub message: String,
+    /// Message id to edit (optional if a message link supplies it; then the
+    /// next argument is the new text).
+    pub message: Option<String>,
     /// New text.
-    pub text: String,
+    pub text: Option<String>,
     /// Treat `text` as raw RichText/Html.
     #[arg(long)]
     pub html: bool,
@@ -205,11 +207,11 @@ pub struct MessageEditArgs {
 
 #[derive(Debug, clap::Args)]
 pub struct MessageReactArgs {
-    /// Conversation / channel id.
+    /// Conversation / channel id, or a Teams deep link.
     pub conversation: String,
-    /// Message id to react to (server id).
-    pub message: String,
+    /// Message id to react to (optional if a message link supplies it; then the
+    /// next argument is the emoji).
+    pub message: Option<String>,
     /// Emoji key (like, heart, laugh, surprised, sad, angry, …).
-    #[arg(default_value = "like")]
-    pub emoji: String,
+    pub emoji: Option<String>,
 }

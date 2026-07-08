@@ -52,16 +52,28 @@ xteams chat list [-n N]                        # recent 1:1 / group chats
 xteams channel list [team]                     # channels you follow (optional name filter)
 xteams channel search <query>                  # find channels by name
 xteams message list <conversation> [-n N]      # last N messages
-xteams message read <conversation> <id>        # a single message
+xteams message read <conversation> [id]        # a single message
 xteams message new  <conversation> <text> [--reply-to <id>] [--html]
-xteams message edit <conversation> <id> <text> [--html]
-xteams message react <conversation> <id> [emoji]      # emoji defaults to "like"
+xteams message edit <conversation> [id] <text> [--html]
+xteams message react <conversation> [id] <emoji>      # e.g. like, heart, laugh
 xteams thread list <conversation> [-n N] [-a]  # threads in a conversation (top-level msg each; -a adds replies)
-xteams thread read <conversation> <root-id>    # one thread: root + replies, chronological
+xteams thread read <conversation> [root-id]    # one thread: root + replies, chronological
 ```
 
 `<conversation>` is a Teams conversation id — a channel (`19:...@thread.tacv2`) or a
-chat (`19:...@unq.gbl.spaces`). Discover ids with `chat list` / `channel list`.
+chat (`19:...@unq.gbl.spaces`) — or a **Teams link** you copied from the app (see
+below). Discover ids with `chat list` / `channel list`.
+
+### Pasting Teams links
+
+Anywhere a `<conversation>` is accepted you can paste a link the Teams app generates
+(`https://teams.microsoft.com/l/…`, `https://teams.cloud.microsoft/l/…`, or
+`msteams:/l/…`) — for a channel, chat, team, or a specific message. The conversation
+id is taken from the link. When the link points at a **message**, the message id is
+used too, so you can drop the separate `[id]` argument: `message read`/`edit`/`react`
+target that message, while `thread read` and `message new --reply-to` target its
+thread (preferring the link's `parentMessageId`). An explicitly typed id still wins.
+Quote the URL so your shell doesn't split it on `&`.
 
 ### Examples
 
@@ -74,6 +86,12 @@ xteams message new 19:abc@thread.tacv2 "on it" --reply-to 1699999999999
 
 # Machine-readable output for scripting
 xteams -j message list 19:abc@thread.tacv2 -n 20 | jq '.[].imdisplayname'
+
+# Read the exact message a Teams link points to (conversation + id from the link)
+xteams message read 'https://teams.microsoft.com/l/message/19:abc@thread.tacv2/1699999999999?parentMessageId=1699999990000'
+
+# React to that message — id comes from the link, you just add the emoji
+xteams message react 'https://teams.microsoft.com/l/message/19:abc@thread.tacv2/1699999999999' heart
 ```
 
 ### Keychain prompt

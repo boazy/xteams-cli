@@ -33,17 +33,26 @@ pub fn render<T: Serialize + DisplayOutput>(value: &T, json: bool) -> Result<()>
 
 #[derive(Debug, Serialize)]
 #[serde(transparent)]
-pub struct MessageList(pub Vec<Message>);
+pub struct MessageList(Vec<Message>);
+
+impl MessageList {
+    /// Stores messages earliest-first so the JSON (`serde(transparent)`) and human
+    /// renderings share one chronological order; the display filter only hides
+    /// empty/system content, it never reorders.
+    pub fn new(mut messages: Vec<Message>) -> Self {
+        messages.sort_by(|a, b| a.time_key().cmp(b.time_key()));
+        Self(messages)
+    }
+}
 
 impl DisplayOutput for MessageList {
     fn display_output(&self) -> String {
-        let mut visible: Vec<&Message> = self
-            .0
+        self.0
             .iter()
             .filter(|m| !html_to_text(m.content.as_deref().unwrap_or("")).is_empty())
-            .collect();
-        visible.sort_by(|a, b| a.time_key().cmp(b.time_key()));
-        visible.iter().map(|m| m.display_output()).collect::<Vec<_>>().join("\n")
+            .map(|m| m.display_output())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
@@ -154,4 +163,43 @@ fn html_to_text(html: &str) -> String {
         .replace("&nbsp;", " ")
         .trim()
         .to_owned()
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::model::Message;
+
+    fn msg(id: &str, time: &str) -> Message {
+        Message {
+            id: Some(id.to_owned()),
+            original_arrival_time: Some(time.to_owned()),
+            compose_time: None,
+            content: Some(format!("<p>{id}</p>")),
+            im_display_name: Some("tester".to_owned()),
+            message_type: Some("RichText/Html".to_owned()),
+            root_message_id: None,
+            sequence_id: None,
+        }
+    }
+
+    #[test]
+    fn message_list_is_earliest_first_in_json_and_human() {
+        let list = MessageList::new(vec![
+            msg("c", "2026-01-03T00:00:00.0000000Z"),
+            msg("a", "2026-01-01T00:00:00.0000000Z"),
+            msg("b", "2026-01-02T00:00:00.0000000Z"),
+        ]);
+
+        let json = serde_json::to_string(&list).unwrap();
+        let (ja, jb, jc) =
+            (json.find("\"a\"").unwrap(), json.find("\"b\"").unwrap(), json.find("\"c\"").unwrap());
+        assert!(ja < jb && jb < jc, "JSON order must be earliest-first: {json}");
+
+        let text = list.display_output();
+        let (ta, tb, tc) =
+            (text.find("(a)").unwrap(), text.find("(b)").unwrap(), text.find("(c)").unwrap());
+        assert!(ta < tb && tb < tc, "human order must be earliest-first: {text}");
+    }
 }

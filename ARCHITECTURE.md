@@ -32,6 +32,7 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
 |------|----------------|
 | `src/main.rs` | Entry; `#[tokio::main]`; parse CLI; dispatch. |
 | `src/cli.rs` | clap derive: two-tier `<noun> <verb>` tree + global `--cookies`, `-j/--json`. |
+| `src/link.rs` | Parse Teams deep links (`/l/…` URLs) into `TeamsDeepLinkFields`; resolve a conversation argument that may be a link. |
 | `src/creds.rs` | macOS credential extraction (Keychain → PBKDF2 → AES-128-CBC; SQLite cookie read). |
 | `src/auth.rs` | `Session`: bearer extraction, `authz` exchange, region map, JWT identity claims. |
 | `src/api.rs` | `ApiClient`: shared reqwest client, chat request builder, error mapping. |
@@ -107,9 +108,10 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
   edit/react — not the echoed `clientmessageid`.
 - **Threads**: every message carries `rootMessageId`; it is a thread **root** iff
   `id == rootMessageId`, otherwise a reply pointing at that root. `thread list` scans
-  the flat message stream, keeps roots (most-recent first, up to `-n`), and with `-a`
-  fetches each root's replies via the `;messageid=` endpoint. `thread read <root>`
-  returns one thread (root + replies) sorted chronologically.
+  the flat message stream, selects the most-recent `-n` roots then orders them
+  chronologically (earliest-first), and with `-a` fetches each root's replies via the
+  `;messageid=` endpoint. `thread read <root>` returns one thread (root + replies)
+  sorted chronologically.
 - Plain text is HTML-escaped and `\n`→`<br>`; `--html` sends `text` verbatim.
 
 ## 6. Data & output
@@ -122,9 +124,11 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
   - `trait DisplayOutput { fn display_output(&self) -> String; }`
   - `render<T: Serialize + DisplayOutput>(value, json)` → JSON (`serde_json`
     pretty) or human text.
-  - `MessageList(Vec<Message>)` — filters empty/system messages and sorts
-    chronologically for human display; `#[serde(transparent)]` so JSON keeps the full
-    data.
+  - `MessageList` — built via `MessageList::new`, which stores messages
+    **chronologically (earliest-first, latest-last)** so JSON (`#[serde(transparent)]`,
+    full data) and human text share one order. `display_output` only *filters* empty/
+    system messages — it never reorders. (Ordering lives in the data, not the renderer,
+    so `-j` and text always agree.)
   - `ThreadList(Vec<Thread>)` — renders each thread's root, with replies indented
     beneath (when `-a`); transparent JSON is an array of `{ root, replies }`.
   - Blanket `impl DisplayOutput for Vec<T>`.
@@ -143,6 +147,29 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
 - `thread list <conv> [-n] [-a]` → threads (roots via `list_threads`; `-a` adds each
   root's replies); `thread read <conv> <root>` → one thread chronologically
 - `team`, `user` → deferred (§9)
+
+### Deep-link resolution (`link.rs`)
+
+Every `<conversation>` argument may instead be a Teams deep link (the
+`https://teams.microsoft.com/l/…`, `https://teams.cloud.microsoft/l/…` or
+`msteams:/l/…` URLs the desktop/web apps generate). `extract_teams_link_data` parses
+one into `TeamsDeepLinkFields` — a **flat bag of optionals** (`kind`,
+`conversation_id`, `message_id`, `parent_message_id`, `tenant_id`, …) so a caller
+takes only what it needs regardless of the link kind; `resolve_conversation` returns
+the conversation id (from the link, or the argument verbatim) plus the parsed fields.
+
+- Ids are **not validated** — they are opaque strings handed to Teams. Both
+  percent-encoded (`19%3A…%40thread.tacv2`) and literal (`19:…@thread.tacv2`) forms
+  are decoded; `/l/chat/0/0` (new chat) yields no conversation id.
+- When a command also takes a message id and the link carries one, the link fills it
+  (an explicitly typed id still wins): a **specific message** uses the path id
+  (`message_ref`); a **thread root** prefers `parentMessageId`, else the path id
+  (`thread_ref`, used by `thread read` and `message new --reply-to`).
+- Because a message link can supply the id, `read`/`edit`/`react`/`thread read` take
+  the message-id positional as **optional**; `edit`/`react` reinterpret their trailing
+  positional (`text`/`emoji`) accordingly. `message react`'s emoji is **mandatory**
+  (no default). `link.rs` is pure and unit-tested (the one place with tests, since it
+  needs no live backend).
 
 ## 8. Conventions / invariants
 

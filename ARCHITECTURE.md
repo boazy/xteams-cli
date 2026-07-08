@@ -34,12 +34,19 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
 | `src/cli.rs` | clap derive: two-tier `<noun> <verb>` tree + global `--cookies`, `-j/--json`. |
 | `src/link.rs` | Parse Teams deep links (`/l/…` URLs) into `TeamsDeepLinkFields`; resolve a conversation argument that may be a link. |
 | `src/creds.rs` | macOS credential extraction (Keychain → PBKDF2 → AES-128-CBC; SQLite cookie read). |
-| `src/auth.rs` | `Session`: bearer extraction, `authz` exchange, region map, JWT identity claims. |
-| `src/api.rs` | `ApiClient`: shared reqwest client, chat request builder, error mapping. |
+| `src/auth.rs` | `Session` (cookie→authz); `build_client`; `Authenticator` re-export + `load/login_authenticator` helpers. |
+| `src/auth/oauth.rs` | Pure device-code/refresh logic: response parsing, poll-error classification, token-cache expiry (unit-tested). |
+| `src/auth/device_code.rs` | Interactive device-code sign-in loop (prompt on stderr; polls the token endpoint). |
+| `src/auth/authenticator.rs` | `Authenticator`: FOCI refresh token → per-audience bearer tokens (cached); lazy region discovery. |
+| `src/auth/store.rs` | macOS Keychain store for the FOCI refresh token (service `xteams`, account `foci-refresh`). |
+| `src/api.rs` | `ApiClient` (skypetoken chat) + shared `send_ok` non-2xx→error mapping. |
 | `src/api/chat.rs` | Chat-service (IC3) ops: conversations, messages, threads, post/edit/react. |
+| `src/api/csa.rs` | chatsvcagg (CSA) team/channel roster (`Authorization: Bearer`). |
+| `src/api/substrate.rs` | substrate.office.com people search. |
+| `src/api/calendar.rs` | Microsoft Graph calendar view. |
 | `src/model.rs` | serde response types + result/status types. |
 | `src/output.rs` | `DisplayOutput` trait, `render(value, json)`, list/message formatting. |
-| `src/error.rs` | Typed `thiserror` errors: `CredsError`, `AuthError`, `ApiError`. |
+| `src/error.rs` | Typed `thiserror` errors: `CredsError`, `AuthError`, `ApiError`, `OAuthError`, `TokenStoreError`. |
 | `src/commands/*.rs` | One module per noun; handlers return data values, never print. |
 | `poc/` | Throwaway Python discovery scripts (credential PoC, endpoint/audience probes). |
 
@@ -82,14 +89,46 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
 - `identity` (upn/name/tenant/audience/exp) is decoded from the AAD JWT claims with
   **no signature verification** (display/metadata only).
 
-## 5. API layer (`api.rs`, `api/chat.rs`)
+### Device-code (FOCI) token path (`auth/`)
+
+The cookie path yields only `api.spaces.skype.com` + skypetoken. Features that need
+other audiences (teams/channels, people search, calendar) use an OAuth 2.0
+**device-code** grant against the Teams **FOCI** public client
+`1fec8e78-bce4-4aaf-ab1b-5451cc387264`:
+
+- `xteams login` (`auth/device_code.rs`) requests a device code, prints it on
+  **stderr**, and polls `…/oauth2/v2.0/token` until sign-in. The resulting **family
+  refresh token** is stored in the macOS Keychain (`auth/store.rs`) — never a plaintext
+  file. `xteams logout` deletes it.
+- `Authenticator` (`auth/authenticator.rs`) redeems that refresh token for a
+  per-audience access token on demand (`grant_type=refresh_token`,
+  `scope=<resource>/.default offline_access`), caches each in memory until ~1 min before
+  expiry, and rotates the stored refresh token when the endpoint returns a new one.
+- Region for CSA is discovered lazily (spaces token → `authz`), so the bearer features
+  need no cookies. Tenant defaults to `organizations`.
+- The OneAuth broker's own refresh-token cache is **not** readable by an unsigned CLI
+  (Keychain access-group scoped — confirmed via `SecItemCopyMatching`: `errSecItemNotFound`),
+  which is why device-code is used instead of extracting it.
+
+## 5. API layer (`api.rs`, `api/chat.rs`, bearer modules)
 
 - `ApiClient::chat(method, path)` builds `{chat_service}/v1/users/ME/{path}` with the
   header **`Authentication: skypetoken=<token>`** (note: `Authentication`, not
   `Authorization`).
 - `ApiClient::exec` sends and maps any non-2xx to `ApiError::Http { endpoint, status,
-  body }`.
+  body }` (via the shared `send_ok`).
 - Conversation ids are percent-encoded into the path (they contain `:` `@` `;`).
+- **Bearer features** (`api/csa.rs`, `api/substrate.rs`, `api/calendar.rs`) build
+  `Authorization: Bearer <token>` requests via `Authenticator::authed(resource, method,
+  url)` and reuse the same `send_ok` mapping.
+
+### Endpoint reference (bearer services)
+
+| Op | Method + path | Audience | Notes |
+|----|---------------|----------|-------|
+| Teams/channel roster | `GET https://teams.microsoft.com/api/csa/{region}/api/v1/teams/users/me/updates` | `chatsvcagg.teams.microsoft.com` | Response `teams[]`, each with `channels[]`; `{region}` from `authz` (never hardcoded). |
+| People search | `POST https://substrate.office.com/search/api/v1/suggestions?scenario=powerbar` | `substrate.office.com` | Body `EntityRequests:[{Query:{QueryString,DisplayQueryString},EntityType:"People",Size,Fields}]` + `cvid`/`logicalId` UUIDs; headers `Origin`/`Referer` = `teams.microsoft.com` (**400** without these). Response `Groups[].Suggestions[]`. |
+| Calendar | `GET https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=&endDateTime=` | `graph.microsoft.com` (`Calendars.ReadWrite`) | `Prefer: outlook.timezone="UTC"`; response `value[]`. |
 
 ### Endpoint reference (chat service / IC3)
 
@@ -146,7 +185,15 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
 - `message new/list/read/edit/react` → chat-service ops
 - `thread list <conv> [-n] [-a]` → threads (roots via `list_threads`; `-a` adds each
   root's replies); `thread read <conv> <root>` → one thread chronologically
-- `team`, `user` → deferred (§9)
+- `login` / `logout` → device-code sign-in / clear the stored refresh token (`AuthAction`)
+- `team list` / `team search <q>` → teams via CSA (`Vec<Team>`); `team join` still
+  deferred (a write op; endpoint unverified)
+- `user search <q>` → people via substrate (`Vec<Person>`)
+- `calendar list [-d days]` → upcoming Graph events (`Vec<CalendarEvent>`)
+
+The bearer commands (`team`/`user`/`calendar`) take `(verb, json)` — no cookies — and
+build an `Authenticator` from the stored refresh token, erroring with
+`OAuthError::NotLoggedIn` ("run `xteams login`") if absent.
 
 ### Deep-link resolution (`link.rs`)
 
@@ -180,34 +227,33 @@ the conversation id (from the link, or the argument verbatim) plus the parsed fi
 - Region/hosts come from `regionGtms` — never hardcode.
 - Parse untrusted JSON into typed structs at the boundary (serde).
 
-## 9. Deferred work (token-audience wall)
+## 9. Multi-audience tokens (device-code) — implemented
 
-Only two audiences are available from the desktop cookies:
+Desktop cookies yield only two audiences (`skypetoken`, `api.spaces.skype.com`).
+Features needing other audiences now obtain them via the device-code/FOCI path
+(§4, `auth/`):
 
-| Token | Audience | Unlocks |
-|-------|----------|---------|
-| `skypetoken` | (Skype/IC3) | chat service ✅ |
-| `authtoken` (AAD) | `api.spaces.skype.com` | `authz` ✅, middle-tier (paths TBD) |
+| Feature | Command | Service host + audience | Status |
+|---------|---------|-------------------------|--------|
+| Teams / channel roster | `team list` / `team search` | `teams.microsoft.com/api/csa/<region>` — `chatsvcagg.teams.microsoft.com` | ✅ |
+| Team join | `team join` | (CSA join endpoint) | ⏳ deferred — write op, endpoint unverified |
+| People search | `user search` | `substrate.office.com/search/api/v1/suggestions` — `substrate.office.com` | ✅ |
+| Calendar | `calendar list` | `graph.microsoft.com/v1.0/me/calendarView` — `graph.microsoft.com` (`Calendars.ReadWrite`) | ✅ |
 
-Blocked features need audiences we cannot currently obtain:
+Token / audience matrix:
 
-| Feature | Service host(s) | Needed audience | Finding |
-|---------|-----------------|-----------------|---------|
-| Team/channel roster, join | `chatsvcagg.teams.microsoft.com`, `teams.microsoft.com/api/csa/<region>` | `chatsvcagg.teams.microsoft.com` | **401** with skypetoken *and* AAD bearer. |
-| User search | `substrate.office.com/search/api/v1/suggestions` | `substrate.office.com` | **401**. |
-| Calendar | middle-tier / substrate | `api.spaces.skype.com` / substrate | middle-tier `.../api/mt/part/<region>-03` accepts our token, but teams/calendar paths returned **404** on guessed paths. |
+| Token | Source | Audience(s) | Unlocks |
+|-------|--------|-------------|---------|
+| `skypetoken` | cookie `authz` | (Skype/IC3) | chat service |
+| `authtoken` (AAD) | cookie | `api.spaces.skype.com` | `authz` |
+| FOCI **family refresh token** | `xteams login` (device-code) | any, redeemed per-audience | chatsvcagg, substrate, graph, spaces |
 
-- **No refresh token in WebView storage** (scanned Local Storage + IndexedDB: 0
-  extractable JWTs). New Teams uses the native **OneAuth** broker; the refresh token
-  lives in an encrypted OneAuth cache (Keychain/file), not found under common service
-  names.
-- **Path to unlock**: the OneAuth refresh-token cache is Keychain items scoped to the
-  app's entitlement (`com.microsoft.oneauth.<oid>` — an unsigned CLI cannot read them),
-  so direct extraction is blocked. The viable route is a **device-code + FOCI** login
-  to obtain a family refresh token, then mint per-audience access tokens via the AAD
-  `/token` endpoint. Full investigation brief + PoC/integration plan:
-  **[docs/oneauth-handoff.md](docs/oneauth-handoff.md)**. Reference material:
-  `poc/probe_*.py`, `poc/extract_teams_creds.py`.
+- **Not extractable:** the OneAuth broker's refresh-token cache is Keychain items scoped
+  to the app's entitlement (`com.microsoft.oneauth.<oid>`) — an unsigned CLI gets
+  `errSecItemNotFound` even via the native `SecItemCopyMatching`, so device-code is used
+  instead. The WebView storage holds no extractable refresh token either.
+- Full investigation brief: **[docs/oneauth-handoff.md](docs/oneauth-handoff.md)**;
+  discovery probes: `poc/mint_tokens.py`, `poc/probe_*.py`, `poc/extract_teams_creds.py`.
 
 ## 10. Windows (future)
 

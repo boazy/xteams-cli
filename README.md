@@ -23,7 +23,8 @@ holds — the same way the app itself talks to the backend.
 | Auth / credential extraction (macOS) | ✅ working |
 | Chats, messages, threads, posting, editing, reactions | ✅ working |
 | Channel list / search (channels you follow) | ✅ working |
-| Team list / join / search, user search, calendar | ⏳ deferred (see below) |
+| Team list / search, user search, calendar (via `xteams login`) | ✅ working |
+| Team join | ⏳ deferred (write op; endpoint unverified) |
 | Windows | ⏳ not yet (design accounts for it) |
 
 ## Requirements
@@ -48,6 +49,8 @@ for machine-readable output.
 
 ```
 xteams auth                                   # who am I? token status
+xteams login                                   # device-code sign-in (unlocks team/user/calendar)
+xteams logout                                  # forget the device-code sign-in
 xteams chat list [-n N]                        # recent 1:1 / group chats
 xteams channel list [team]                     # channels you follow (optional name filter)
 xteams channel search <query>                  # find channels by name
@@ -58,6 +61,10 @@ xteams message edit <conversation> [id] <text> [--html]
 xteams message react <conversation> [id] <emoji>      # e.g. like, heart, laugh
 xteams thread list <conversation> [-n N] [-a]  # threads in a conversation (top-level msg each; -a adds replies)
 xteams thread read <conversation> [root-id]    # one thread: root + replies, chronological
+xteams team list                               # teams you belong to (needs `xteams login`)
+xteams team search <query>                     # find teams by name
+xteams user search <query>                      # find people by name / email
+xteams calendar list [-d DAYS]                 # upcoming calendar events (default 7 days)
 ```
 
 `<conversation>` is a Teams conversation id — a channel (`19:...@thread.tacv2`) or a
@@ -106,13 +113,16 @@ prompt recurring.
 - **`-j` / `--json`** — full structured JSON (all fields, no lossy formatting),
   intended for scripts and tooling.
 
-## Deferred features
+## Extra features via `xteams login`
 
-`team list/join/search`, `user search`, and calendar require Teams tokens for
-*different service audiences* (`chatsvcagg`, `substrate.office.com`) than the ones
-the desktop app leaves in cookies. Getting them means minting tokens from the native
-OneAuth cache — a larger reverse-engineering effort that is not yet done. Those
-commands exit with a clear "deferred" message.
+`team list/search`, `user search`, and `calendar` talk to service audiences
+(`chatsvcagg.teams.microsoft.com`, `substrate.office.com`, Microsoft Graph) that the
+desktop cookies don't cover. Run **`xteams login`** once — a device-code sign-in you
+complete in your browser — and `xteams` stores a refresh token in your Keychain, then
+mints the per-audience tokens on demand (silent for ~90 days). `xteams logout` forgets
+it.
+
+`team join` is still deferred: it is a write operation and its endpoint is unverified.
 
 ## How it works (short version)
 
@@ -120,6 +130,9 @@ commands exit with a clear "deferred" message.
    Keychain key.
 2. Exchange the AAD token for a Skype token + regional endpoints via Teams' `authz`.
 3. Call the internal chat service with the Skype token.
+4. For `team` / `user` / `calendar`, `xteams login` runs an OAuth device-code sign-in
+   to obtain a FOCI family refresh token (stored in the Keychain), then mints
+   per-audience tokens for `chatsvcagg`, `substrate`, and Microsoft Graph on demand.
 
 Full technical detail: [ARCHITECTURE.md](ARCHITECTURE.md).
 

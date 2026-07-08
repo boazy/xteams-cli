@@ -11,7 +11,7 @@ use crate::output::render;
 pub async fn dispatch(verb: CalendarVerb, json: bool) -> Result<()> {
     let authenticator = auth::load_authenticator().await?;
     match verb {
-        CalendarVerb::List(args) => {
+        CalendarVerb::Upcoming(args) => {
             render(&calendar::calendar_view(&authenticator, args.days).await?, json)
         }
     }

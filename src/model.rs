@@ -88,11 +88,21 @@ pub struct AuthStatus {
     pub user: Option<String>,
     pub name: Option<String>,
     pub tenant: Option<String>,
-    pub audience: Option<String>,
     pub region: String,
     pub chat_service: String,
-    pub token_ttl_min: Option<i64>,
     pub services: usize,
+    pub tokens: Vec<TokenInfo>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TokenInfo {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audience: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_in_min: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

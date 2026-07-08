@@ -28,20 +28,19 @@ const USER_AGENT: &str = "xteams-cli/0.1 (Teams-compatible)";
 #[derive(Debug, Clone)]
 pub struct Session {
     pub skype_token: String,
+    pub aad_bearer: String,
     pub region: String,
     pub chat_service: String,
     pub gtms: BTreeMap<String, String>,
     pub identity: Identity,
 }
 
-/// Identity + expiry decoded from the AAD bearer's JWT claims.
+/// Identity decoded from the AAD bearer's JWT claims.
 #[derive(Debug, Clone, Default)]
 pub struct Identity {
     pub upn: Option<String>,
     pub name: Option<String>,
     pub tenant: Option<String>,
-    pub audience: Option<String>,
-    pub expires_in_secs: Option<i64>,
 }
 
 /// Build a reqwest client, load local cookies, and establish a session.
@@ -100,6 +99,7 @@ impl Session {
 
         Ok(Self {
             skype_token,
+            aad_bearer,
             region: parsed.region.unwrap_or_default(),
             chat_service,
             gtms,
@@ -127,18 +127,29 @@ fn identity_from_jwt(jwt: &str) -> Identity {
         return Identity::default();
     };
     let get = |key: &str| claims.get(key).and_then(|v| v.as_str()).map(str::to_owned);
-    let exp = claims.get("exp").and_then(serde_json::Value::as_i64);
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
-        .unwrap_or(0);
     Identity {
         upn: get("upn").or_else(|| get("preferred_username")),
         name: get("name"),
         tenant: get("tid"),
-        audience: get("aud"),
-        expires_in_secs: exp.map(|e| e - now),
     }
+}
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+        .unwrap_or(0)
+}
+
+/// Decode a JWT's audience and remaining lifetime in seconds; `(None, None)` when the
+/// token is not a decodable JWT (e.g. an opaque refresh token).
+pub fn jwt_audience_and_ttl(jwt: &str) -> (Option<String>, Option<i64>) {
+    let Some(claims) = decode_claims(jwt) else {
+        return (None, None);
+    };
+    let audience = claims.get("aud").and_then(|v| v.as_str()).map(str::to_owned);
+    let ttl = claims.get("exp").and_then(serde_json::Value::as_i64).map(|exp| exp - now_secs());
+    (audience, ttl)
 }
 
 fn decode_claims(jwt: &str) -> Option<serde_json::Map<String, serde_json::Value>> {
@@ -184,5 +195,31 @@ impl AuthzResponse {
                     .collect()
             })
             .unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fake_jwt(aud: &str, exp: i64) -> String {
+        let payload = serde_json::json!({ "aud": aud, "exp": exp }).to_string();
+        let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(payload);
+        format!("eyJhbGciOiJub25lIn0.{encoded}.sig")
+    }
+
+    #[test]
+    fn jwt_audience_and_ttl_reads_aud_and_remaining_minutes() {
+        let (aud, ttl) = jwt_audience_and_ttl(&fake_jwt("https://graph.microsoft.com", now_secs() + 3600));
+        assert_eq!(aud.as_deref(), Some("https://graph.microsoft.com"));
+        let ttl = ttl.expect("ttl should decode");
+        assert!(ttl > 3500 && ttl <= 3600, "expected ~1h ttl, got {ttl}");
+    }
+
+    #[test]
+    fn jwt_audience_and_ttl_on_opaque_refresh_token_is_none() {
+        let (aud, ttl) = jwt_audience_and_ttl("1.AcoOpaqueRefreshTokenNotAJwt.q0qw");
+        assert_eq!(aud, None);
+        assert_eq!(ttl, None);
     }
 }

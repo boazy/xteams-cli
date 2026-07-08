@@ -28,12 +28,11 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Show the signed-in account and token status.
-    Auth,
-    /// Sign in via device code (unlocks team, user, and calendar).
-    Login,
-    /// Remove the stored device-code sign-in.
-    Logout,
+    /// Account/token status, device-code sign-in, and sign-out.
+    Auth {
+        #[command(subcommand)]
+        verb: AuthVerb,
+    },
     /// Chats (1:1 and group conversations).
     Chat {
         #[command(subcommand)]
@@ -69,6 +68,23 @@ pub enum Command {
         #[command(subcommand)]
         verb: CalendarVerb,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AuthVerb {
+    /// Show the signed-in account and status of every token (audience + expiry).
+    Status(AuthStatusArgs),
+    /// Sign in via device code (unlocks team, user, and calendar).
+    Login,
+    /// Remove the stored device-code sign-in.
+    Logout,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct AuthStatusArgs {
+    /// Include the actual secret token values in the output.
+    #[arg(long)]
+    pub include_tokens: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -126,7 +142,7 @@ pub enum UserVerb {
 #[derive(Debug, Subcommand)]
 pub enum CalendarVerb {
     /// List upcoming events.
-    List(CalendarListArgs),
+    Upcoming(CalendarUpcomingArgs),
 }
 
 #[derive(Debug, clap::Args)]
@@ -155,7 +171,7 @@ pub struct QueryArgs {
 }
 
 #[derive(Debug, clap::Args)]
-pub struct CalendarListArgs {
+pub struct CalendarUpcomingArgs {
     /// Number of days ahead to include.
     #[arg(short = 'd', long, default_value_t = 7)]
     pub days: i64,

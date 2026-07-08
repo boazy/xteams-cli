@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use crate::model::{
     AuthAction, AuthStatus, CalendarEvent, Conversation, Message, MessageAction, Person, Team,
-    Thread,
+    Thread, TokenInfo,
 };
 
 pub trait DisplayOutput {
@@ -185,14 +185,24 @@ impl DisplayOutput for AuthStatus {
         }
         lines.push(format!("Region    : {}", self.region));
         lines.push(format!("Chat svc  : {}", self.chat_service));
-        if let Some(audience) = &self.audience {
-            lines.push(format!("AAD aud   : {audience}"));
-        }
-        if let Some(ttl) = self.token_ttl_min {
-            lines.push(format!("Token TTL : {ttl} min"));
-        }
         lines.push(format!("Services  : {} region endpoints", self.services));
+        lines.push("Tokens    :".to_owned());
+        for token in &self.tokens {
+            lines.push(format!("  {}", token.display_output()));
+        }
         lines.join("\n")
+    }
+}
+
+impl DisplayOutput for TokenInfo {
+    fn display_output(&self) -> String {
+        let aud = self.audience.as_deref().unwrap_or("-");
+        let ttl = self.expires_in_min.map_or_else(|| "n/a".to_owned(), |min| format!("{min} min"));
+        let mut line = format!("{:16} aud={aud}  exp={ttl}", self.name);
+        if let Some(value) = &self.value {
+            line.push_str(&format!("  token={value}"));
+        }
+        line
     }
 }
 

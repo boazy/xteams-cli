@@ -54,6 +54,10 @@ impl Authenticator {
         Ok(self.http.request(method, url).bearer_auth(token))
     }
 
+    pub fn refresh_token(&self) -> Result<String> {
+        Ok(self.refresh_token.lock().map_err(lock_err)?.clone())
+    }
+
     pub async fn token_for(&self, resource: &str) -> Result<String> {
         if let Some(token) = self.cached(resource)? {
             return Ok(token);

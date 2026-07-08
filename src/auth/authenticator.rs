@@ -97,9 +97,16 @@ impl Authenticator {
         let status = resp.status().as_u16();
         let body = resp.bytes().await?;
         if status != 200 {
+            let code = oauth::error_code(&body);
+            if code.as_deref() == Some("invalid_grant") {
+                // The refresh token is expired/revoked: drop it so the next run starts a
+                // clean device-code sign-in instead of failing on the dead token.
+                store::delete_refresh_token()?;
+                return Err(OAuthError::SessionExpired.into());
+            }
             return Err(OAuthError::TokenEndpoint {
                 status,
-                error: "refresh_grant_failed".to_owned(),
+                error: code.unwrap_or_else(|| "refresh_grant_failed".to_owned()),
                 description: String::from_utf8_lossy(&body).chars().take(200).collect(),
             }
             .into());

@@ -55,6 +55,15 @@ async fn append_device_code_tokens(
     include_tokens: bool,
     tokens: &mut Vec<TokenInfo>,
 ) {
+    let mut minted = Vec::new();
+    for (name, resource) in DEVICE_CODE_AUDIENCES {
+        match authenticator.token_for(resource).await {
+            Ok(token) => minted.push(token_info(name, &token, include_tokens)),
+            // A stale/revoked refresh token was just cleared by `token_for`; omit the
+            // device-code tokens (a feature command surfaces the "sign in again" error).
+            Err(_) => return,
+        }
+    }
     if let Ok(refresh) = authenticator.refresh_token() {
         tokens.push(TokenInfo {
             name: "refresh (FOCI)".to_owned(),
@@ -63,11 +72,7 @@ async fn append_device_code_tokens(
             value: include_tokens.then_some(refresh),
         });
     }
-    for (name, resource) in DEVICE_CODE_AUDIENCES {
-        if let Ok(token) = authenticator.token_for(resource).await {
-            tokens.push(token_info(name, &token, include_tokens));
-        }
-    }
+    tokens.extend(minted);
 }
 
 fn token_info(name: &str, token: &str, include_tokens: bool) -> TokenInfo {

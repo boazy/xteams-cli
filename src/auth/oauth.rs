@@ -102,6 +102,11 @@ pub fn parse_token(body: &[u8]) -> Result<TokenResponse, OAuthError> {
     serde_json::from_slice(body).map_err(|_| OAuthError::MissingField("access_token"))
 }
 
+/// The AAD `error` code from a non-200 token response, if the body is parseable.
+pub fn error_code(body: &[u8]) -> Option<String> {
+    serde_json::from_slice::<OAuthErrorBody>(body).ok().map(|body| body.error)
+}
+
 /// A minted access token with an absolute expiry, for the per-audience cache.
 #[derive(Clone)]
 pub struct CachedToken {
@@ -180,5 +185,12 @@ mod tests {
             scope_for("https://substrate.office.com"),
             "https://substrate.office.com/.default offline_access"
         );
+    }
+
+    #[test]
+    fn error_code_extracts_aad_error_and_ignores_non_json() {
+        let body = br#"{"error":"invalid_grant","error_description":"token expired"}"#;
+        assert_eq!(error_code(body).as_deref(), Some("invalid_grant"));
+        assert_eq!(error_code(b"<html>500</html>"), None);
     }
 }

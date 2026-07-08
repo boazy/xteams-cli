@@ -72,6 +72,9 @@ pub enum OAuthError {
 
     #[error("not signed in for this feature — run `xteams auth login` first")]
     NotLoggedIn,
+
+    #[error("your sign-in expired or was revoked — run `xteams auth login` to sign in again")]
+    SessionExpired,
 }
 
 /// Failures reading/writing the refresh token in the macOS Keychain.

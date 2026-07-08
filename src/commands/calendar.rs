@@ -1,5 +1,5 @@
 //! `calendar` commands. Lists upcoming events from Microsoft Graph using a
-//! device-code bearer token; run `xteams login` first.
+//! device-code bearer token; run `xteams auth login` first.
 
 use eyre::Result;
 

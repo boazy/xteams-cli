@@ -1,5 +1,5 @@
 //! `team` commands. `list`/`search` enumerate your teams via the chatsvcagg (CSA)
-//! aggregator using a device-code bearer token; run `xteams login` first.
+//! aggregator using a device-code bearer token; run `xteams auth login` first.
 
 use eyre::{Result, bail};
 

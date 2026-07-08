@@ -1,5 +1,5 @@
 //! `user` commands. `search` finds people via substrate people-search using a
-//! device-code bearer token; run `xteams login` first.
+//! device-code bearer token; run `xteams auth login` first.
 
 use eyre::Result;
 

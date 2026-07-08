@@ -70,7 +70,7 @@ pub enum OAuthError {
     #[error("token response was missing the '{0}' field")]
     MissingField(&'static str),
 
-    #[error("not signed in for this feature — run `xteams login` first")]
+    #[error("not signed in for this feature — run `xteams auth login` first")]
     NotLoggedIn,
 }
 

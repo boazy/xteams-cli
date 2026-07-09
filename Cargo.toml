@@ -25,12 +25,24 @@ base64 = "0.22"
 thiserror = "2"
 dirs = "5"
 urlencoding = "2"
-security-framework = "3.7.0"
 eyre = "0.6.12"
 color-eyre = "0.6.5"
 time = { version = "0.3", default-features = false, features = ["std", "formatting"] }
 uuid = { version = "1", features = ["v4"] }
 etcetera = "0.11.0"
+
+# Cookie decryption deps are platform-specific: macOS reads the Keychain key
+# (`security-framework`); Windows DPAPI-unwraps + AES-256-GCM (`windows-sys` +
+# `aes-gcm`). Other platforms pull neither (cookie extraction is unsupported).
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3.7.0"
+
+[target.'cfg(windows)'.dependencies]
+aes-gcm = "0.10"
+windows-sys = { version = "0.60", features = [
+    "Win32_Foundation",
+    "Win32_Security_Cryptography",
+] }
 
 # v1 enforces the safety-critical denies; the full pedantic/nursery/cargo gate
 # from the programming skill is deferred to production hardening.

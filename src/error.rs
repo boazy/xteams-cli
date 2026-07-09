@@ -17,11 +17,23 @@ pub enum CredsError {
     #[error("required cookie '{0}' was not found or could not be decrypted")]
     CookieMissing(&'static str),
 
+    #[cfg(target_os = "macos")]
     #[error(
         "Keychain read failed: {0}\n\
          (approve the 'Microsoft Teams Safe Storage' prompt, or verify the item exists)"
     )]
     Keychain(String),
+
+    #[cfg(windows)]
+    #[error("Windows credential extraction failed: {0}")]
+    Windows(String),
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    #[error(
+        "cookie extraction from the local Teams app is not supported on this platform\n\
+         (run `xteams auth login` to sign in with a device code — it needs no cookies)"
+    )]
+    UnsupportedPlatform,
 }
 
 /// Failures while turning cookies (or an FRT-derived spaces token) into a session.

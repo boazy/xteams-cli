@@ -40,7 +40,10 @@ return typed values; a single renderer prints human text or JSON.
 | `src/main.rs` | Entry; `#[tokio::main]`; parse CLI; dispatch. |
 | `src/cli.rs` | clap derive: two-tier `<noun> <verb>` tree + global `--cookies`, `-j/--json`. |
 | `src/link.rs` | Parse Teams deep links (`/l/…` URLs) into `TeamsDeepLinkFields`; resolve a conversation argument that may be a link. |
-| `src/creds.rs` | macOS credential extraction (Keychain → PBKDF2 → AES-128-CBC; SQLite cookie read). |
+| `src/creds.rs` | Cookie-extraction root: shared `TeamsCookies`, SQLite read + value post-processing; dispatches to a per-OS `imp`. |
+| `src/creds/macos.rs` | macOS (tested): Keychain secret → PBKDF2-HMAC-SHA1 → AES-128-CBC. |
+| `src/creds/windows.rs` | Windows (**untested**): `Local State` key → DPAPI unwrap → AES-256-GCM. |
+| `src/creds/unsupported.rs` | Other platforms: cookie extraction unavailable → `CredsError::UnsupportedPlatform` (use `xteams auth login`). |
 | `src/auth.rs` | Orchestration root: FRT-first `connect` (else cookie fallback); `build_client`; `SPACES_RESOURCE`; re-exports + `load/login_authenticator` helpers. |
 | `src/auth/session.rs` | `Session` (skypetoken + region + gtms + identity + credential tag); cookie `establish`; FRT `from_skype_session`; shared `authz` POST + response parsing. |
 | `src/auth/authenticator.rs` | `Authenticator`: FRT → per-audience bearer tokens + skype session, backed by the on-disk cache (lock-free reads; mutations under `CacheLock`); `invalidate_credential`; `logout`. |
@@ -66,25 +69,38 @@ return typed values; a single renderer prints human text or JSON.
 | `src/commands/*.rs` | One module per noun; handlers return data values, never print. |
 | `poc/` | Throwaway Python discovery scripts (credential PoC, endpoint/audience probes). |
 
-## 3. Credential extraction (`creds.rs`, macOS)
+## 3. Credential extraction (`creds/`)
+
+`creds.rs` is a thin, platform-dispatching root. Reading the Chromium `Cookies`
+SQLite (copy-to-temp → `SELECT` the two rows) and post-processing a decrypted value
+(strip the optional 32-byte `SHA256(host)` M127 prefix, keep the printable-UTF-8
+candidate) are **shared**; deriving the key and the cipher are per-OS, in an `imp`
+submodule chosen by `#[cfg]`:
+
+- **`creds/macos.rs`** (tested) — detailed below.
+- **`creds/windows.rs`** (**untested**) — DPAPI + AES-256-GCM; see §11.
+- **`creds/unsupported.rs`** — neither macOS nor Windows: every entry point returns
+  `CredsError::UnsupportedPlatform`, so the crate still **builds** and `xteams auth
+  login` (no cookies needed) works everywhere — only the cookie fallback is
+  unavailable.
+
+**Cookies used** (both paths): `authtoken` (wraps the AAD bearer) and `skypetoken_asm`
+(Skype token).
+
+### macOS (`creds/macos.rs`)
 
 - **Client**: New Teams (`com.microsoft.teams2`) runs an Edge WebView2 (`EBWebView`)
   → standard Chromium storage.
 - **Cookie DB (default)**:
   `~/Library/Containers/com.microsoft.teams2/Data/Library/Application Support/Microsoft/MSTeams/EBWebView/WV2Profile_tfw/Cookies`
-  (signed-in work profile; `--cookies` overrides). Copied to a temp file before
-  reading (the app holds a lock) and deleted after.
-- **Cookies used**: `authtoken` (wraps the AAD bearer) and `skypetoken_asm` (Skype
-  token).
+  (signed-in work profile; `--cookies` overrides).
 - **Decryption**: Chromium `v10`/`v11` values, **AES-128-CBC**, IV = 16 spaces.
   - Key = `PBKDF2-HMAC-SHA1(secret, salt="saltysalt", iterations=1003, len=16)`.
   - `secret` = Keychain generic password, service `"Microsoft Teams Safe Storage"`,
     account `"Microsoft Teams"`, read **in-process** via the `security-framework` crate
-    (`passwords::get_generic_password`; GUI prompt on first access by the `xteams`
-    binary itself; falls back to a service-only `ItemSearchOptions` search).
-  - After PKCS7 unpad, Chromium ≥ M127 prepends a **32-byte `SHA256(host)`** to the
-    plaintext; we return whichever candidate (with/without the 32-byte prefix) is
-    valid printable UTF-8.
+    (a **macOS-only dependency**; `passwords::get_generic_password`; GUI prompt on first
+    access by the `xteams` binary itself; falls back to a service-only
+    `ItemSearchOptions` search).
 - On macOS `Local State` has **no** `os_crypt.encrypted_key` (that is the Windows
   DPAPI path — see §11).
 
@@ -343,11 +359,33 @@ Modules: `src/seed.rs` (orchestrator + token mint/identity + `TokenType` branch)
 (pure MSAL-cache key derivation + `build_cache`), `src/seed/store.rs` (home-dir paths +
 connection and MSAL-cache writes/merge → `SeedError`). All pure builders are unit-tested.
 
-## 11. Windows (future)
+## 11. Windows (`creds/windows.rs`) — implemented, **untested**
 
-Same EBWebView layout, but cookies are **AES-256-GCM** with the key stored in
-`Local State` → `os_crypt.encrypted_key`, DPAPI-unwrapped via `CryptUnprotectData`.
-Add a `#[cfg(windows)]` path in `creds.rs`; the rest of the pipeline is unchanged.
+Same EBWebView layout with Chromium's Windows crypto. Implemented from public
+references but never run on a Windows host, so treat it as unverified.
+
+- **Cookie DB**: `%LOCALAPPDATA%\Packages\MSTeams_8wekyb3d8bbwe\LocalCache\Microsoft\
+  MSTeams\EBWebView\WV2Profile_tfw\Network\Cookies` (modern WebView2 ≥ v96; falls back
+  to `WV2Profile_tfw\Cookies` on older installs). `--cookies` overrides.
+- **Key**: base64 `os_crypt.encrypted_key` from `…\EBWebView\Local State`, minus the
+  5-byte `DPAPI` prefix, unwrapped with `CryptUnprotectData` (via `windows-sys`) → a
+  32-byte AES-256 key.
+- **Decryption**: `v10`/`v11` values = 12-byte nonce ++ ciphertext ++ 16-byte GCM tag,
+  **AES-256-GCM** (`aes-gcm`); then the shared M127 `SHA256(host)` handling.
+- **Deps**: `windows-sys` + `aes-gcm`, gated to `cfg(windows)` in `Cargo.toml`
+  (`security-framework` is likewise gated to `cfg(target_os = "macos")`), so other
+  targets pull neither and still build.
+- **Known gaps** (why it stays untested/limited):
+  - **App-Bound Encryption (`v20`)**: Chromium ≥ 127 may store an
+    `app_bound_encrypted_key` (extra SYSTEM/app-bound wrap) instead of `encrypted_key`;
+    that path is **not** implemented — extraction then fails with a clear error that
+    points at `xteams auth login`.
+  - **File lock**: `ms-teams.exe`/`msedgewebview2.exe` hold the `Cookies` DB open, so
+    the copy-to-temp read may fail unless Teams is closed.
+
+Verified only to **compile** against real `windows-sys`/`aes-gcm` for
+`x86_64-pc-windows-msvc` (isolated cross-check from macOS); runtime behavior is
+unconfirmed. The rest of the pipeline (authz → skypetoken → chat service) is unchanged.
 
 ## 12. Build / QA
 

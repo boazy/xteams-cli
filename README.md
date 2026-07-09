@@ -26,12 +26,18 @@ holds — the same way the app itself talks to the backend.
 | Team list / search, user search, calendar (via `xteams login`) | ✅ working |
 | Seed the m365 CLI (`auth seed m365`) with a Graph token | ✅ working |
 | Team join | ⏳ deferred (write op; endpoint unverified) |
-| Windows | ⏳ not yet (design accounts for it) |
+| `xteams login` + all commands, on macOS / Windows / Linux | ✅ cross-platform (device-code; no Teams app) |
+| Windows cookie fallback (no login) | 🧪 implemented, **untested** |
 
 ## Requirements
 
-- **macOS** with **New Teams** ("Teams 2.0", bundle `com.microsoft.teams2`)
-  installed and signed in.
+- **`xteams login` (device-code) works on macOS, Windows, and Linux** — it needs only
+  a browser to complete sign-in, no Teams app.
+- **Cookie fallback (no login)** reads the local **New Teams** ("Teams 2.0") install:
+  - **macOS** — fully supported (bundle `com.microsoft.teams2`), signed in.
+  - **Windows** — implemented but **untested** (`MSTeams_8wekyb3d8bbwe`); may require
+    Teams closed, and does not cover App-Bound-Encryption (`v20`) cookies.
+  - **Other platforms** — not supported; use `xteams login`.
 - **Rust** (2024-edition toolchain) to build.
 
 ## Install

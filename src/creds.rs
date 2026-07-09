@@ -1,30 +1,35 @@
-//! macOS credential extraction for New Teams (Teams 2.0, Edge WebView2).
+//! Credential extraction for New Teams (Teams 2.0, Edge WebView2).
 //!
-//! New Teams stores its web credentials in a Chromium "EBWebView" profile:
-//! cookies live in a SQLite DB with AES-128-CBC `v10` encrypted values, and the
-//! key is derived (PBKDF2-HMAC-SHA1) from the "Microsoft Teams Safe Storage"
-//! secret in the login Keychain. This mirrors the proven PoC in `poc/`.
+//! New Teams keeps its web session in a Chromium "EBWebView" profile whose auth
+//! cookies live in a SQLite DB with encrypted `v10`/`v11` values. Reading that DB
+//! is platform-independent; deriving the key and the cipher are not, so each OS
+//! has its own `imp` submodule:
+//!
+//! - `macos` — Keychain secret → PBKDF2-HMAC-SHA1 → AES-128-CBC (tested).
+//! - `windows` — `Local State` key → DPAPI unwrap → AES-256-GCM (**untested**).
+//! - anything else — unsupported: [`load_cookies`] fails with a clear error that
+//!   points at `xteams auth login` (the FRT path needs no cookies).
 
 use std::path::{Path, PathBuf};
 
-use aes::Aes128;
-use eyre::{Context, Result, eyre};
-use cbc::cipher::{BlockDecryptMut, KeyIvInit, block_padding::Pkcs7};
-use security_framework::item::{ItemClass, ItemSearchOptions, SearchResult};
-use security_framework::passwords::get_generic_password;
+use eyre::{Context, Result};
 
 use crate::error::CredsError;
 
-type Aes128CbcDec = cbc::Decryptor<Aes128>;
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+use macos as imp;
 
-const KEYCHAIN_SERVICE: &str = "Microsoft Teams Safe Storage";
-const KEYCHAIN_ACCOUNT: &str = "Microsoft Teams";
-const PBKDF2_SALT: &[u8] = b"saltysalt";
-const PBKDF2_ROUNDS: u32 = 1003;
-const DOMAIN_HASH_LEN: usize = 32;
-/// `errSecItemNotFound`, defined locally to avoid pulling in `security-framework-sys`
-/// just for one stable OSStatus constant.
-const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+use windows as imp;
+
+#[cfg(not(any(target_os = "macos", windows)))]
+mod unsupported;
+#[cfg(not(any(target_os = "macos", windows)))]
+use unsupported as imp;
 
 /// The two auth cookies the internal Teams APIs consume.
 #[derive(Debug, Clone)]
@@ -35,26 +40,25 @@ pub struct TeamsCookies {
     pub skypetoken: String,
 }
 
-/// Default cookie store for the signed-in work profile (`WV2Profile_tfw`).
+/// Default cookie store for the signed-in work profile, resolved per platform.
 pub fn default_cookies_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| eyre!("cannot resolve home directory"))?;
-    Ok(home.join(
-        "Library/Containers/com.microsoft.teams2/Data/Library/Application Support/\
-Microsoft/MSTeams/EBWebView/WV2Profile_tfw/Cookies",
-    ))
+    imp::default_cookies_path()
 }
 
 /// Load and decrypt the Teams auth cookies from the given `Cookies` SQLite DB.
+///
+/// Key derivation + per-value decryption are platform-specific (`imp`); the
+/// SQLite read and value post-processing are shared across platforms.
 pub fn load_cookies(cookies_db: &Path) -> Result<TeamsCookies> {
-    let key = derive_cookie_key()?;
+    let key = imp::derive_cookie_key()?;
     let rows = read_encrypted_cookies(cookies_db)?;
 
     let mut authtoken = None;
     let mut skypetoken = None;
     for (name, enc) in rows {
         match name.as_str() {
-            "authtoken" if authtoken.is_none() => authtoken = decrypt_value(&enc, &key),
-            "skypetoken_asm" if skypetoken.is_none() => skypetoken = decrypt_value(&enc, &key),
+            "authtoken" if authtoken.is_none() => authtoken = imp::decrypt_value(&enc, &key),
+            "skypetoken_asm" if skypetoken.is_none() => skypetoken = imp::decrypt_value(&enc, &key),
             _ => {}
         }
     }
@@ -65,50 +69,14 @@ pub fn load_cookies(cookies_db: &Path) -> Result<TeamsCookies> {
     })
 }
 
-/// Read the Safe Storage secret from the Keychain and derive the AES key.
-fn derive_cookie_key() -> Result<[u8; 16]> {
-    let secret = keychain_secret()?;
-    let mut key = [0u8; 16];
-    pbkdf2::pbkdf2_hmac::<sha1::Sha1>(&secret, PBKDF2_SALT, PBKDF2_ROUNDS, &mut key);
-    Ok(key)
-}
-
-/// Read the "Safe Storage" secret from the login Keychain in-process (via
-/// `security-framework`): by service + account, then a service-only fallback.
-fn keychain_secret() -> Result<Vec<u8>> {
-    match get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT) {
-        Ok(secret) => Ok(secret),
-        Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => keychain_secret_by_service()
-            .ok_or_else(|| CredsError::Keychain("item not found".to_owned()).into()),
-        Err(e) => Err(CredsError::Keychain(e.to_string()).into()),
-    }
-}
-
-/// Fallback: locate the Safe Storage item by service name alone (any account).
-fn keychain_secret_by_service() -> Option<Vec<u8>> {
-    let results = ItemSearchOptions::new()
-        .class(ItemClass::generic_password())
-        .service(KEYCHAIN_SERVICE)
-        .load_data(true)
-        .search()
-        .ok()?;
-    results.into_iter().find_map(|r| match r {
-        SearchResult::Data(data) => Some(data),
-        _ => None,
-    })
-}
-
-/// Decrypt one Chromium `v10` cookie value; `None` if not decryptable/printable.
-fn decrypt_value(enc: &[u8], key: &[u8; 16]) -> Option<String> {
-    let body = enc.strip_prefix(b"v10").or_else(|| enc.strip_prefix(b"v11"))?;
-    let iv = [b' '; 16];
-    let plain = Aes128CbcDec::new_from_slices(key, &iv)
-        .ok()?
-        .decrypt_padded_vec_mut::<Pkcs7>(body)
-        .ok()?;
-    // Chromium >= M127 prepends a 32-byte SHA256(host) before the value.
+/// Turn a decrypted cookie plaintext into a printable string, tolerating the
+/// optional 32-byte `SHA256(host)` prefix Chromium >= M127 prepends. Shared by
+/// each platform `imp` (child modules can see this parent-private helper).
+#[cfg(any(target_os = "macos", windows))]
+fn plaintext_to_cookie(plain: &[u8]) -> Option<String> {
+    const DOMAIN_HASH_LEN: usize = 32;
     let stripped = plain.get(DOMAIN_HASH_LEN..).unwrap_or(&[]);
-    for candidate in [plain.as_slice(), stripped] {
+    for candidate in [plain, stripped] {
         if let Ok(text) = std::str::from_utf8(candidate)
             && !text.is_empty()
             && text.chars().all(|c| !c.is_control())

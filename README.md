@@ -162,8 +162,11 @@ Full technical detail: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Security notes
 
-- `xteams` reads live access tokens for your account. It never writes them to disk;
-  tokens live only in memory for the duration of a command.
+- `xteams` reads live access tokens for your account and keeps them in memory for the
+  duration of a command — **except** `auth seed m365`, whose whole purpose is to write a
+  Graph token (and, in `refresh` mode, the refresh token) into the **m365 CLI's own
+  credential store** (`~/.cli-m365-*.json`). m365/MSAL keep those as plaintext JSON, so
+  treat them like any other on-disk credential.
 - It uses undocumented APIs and may stop working when Microsoft changes them.
 - Respect your organization's policies.
 

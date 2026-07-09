@@ -99,7 +99,19 @@ pub enum SeedTarget {
 }
 
 #[derive(Debug, clap::Args)]
-pub struct SeedM365Args {}
+pub struct SeedM365Args {
+    /// What to seed: a refresh token (default; m365 self-renews) or a 1-hour access token.
+    #[arg(short = 't', long, default_value = "refresh")]
+    pub token_type: TokenType,
+}
+
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum TokenType {
+    /// Inject a refresh token into m365's MSAL cache; m365 renews silently for ~90 days.
+    Refresh,
+    /// Inject only a ~1-hour Graph access token; re-run before it expires.
+    Access,
+}
 
 #[derive(Debug, Subcommand)]
 pub enum ChatVerb {

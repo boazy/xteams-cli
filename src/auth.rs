@@ -20,6 +20,7 @@ mod oauth;
 mod store;
 
 pub use authenticator::{Authenticator, logout};
+pub use oauth::FOCI_CLIENT;
 
 const AUTHZ_URL: &str = "https://authsvc.teams.microsoft.com/v1.0/authz";
 const USER_AGENT: &str = "xteams-cli/0.1 (Teams-compatible)";

@@ -27,9 +27,9 @@ pub async fn dispatch(verb: AuthVerb, cookies: Option<&Path>, json: bool) -> Res
             render(&AuthAction { action: "logout", signed_in: false }, json)
         }
         AuthVerb::Seed { target } => match target {
-            SeedTarget::M365(_args) => {
+            SeedTarget::M365(args) => {
                 let authenticator = auth::load_authenticator().await?;
-                render(&crate::seed::seed_m365_access(&authenticator).await?, json)
+                render(&crate::seed::seed_m365(args.token_type, &authenticator).await?, json)
             }
         },
     }

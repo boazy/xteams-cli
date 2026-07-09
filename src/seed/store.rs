@@ -8,6 +8,7 @@ use super::connection::{self, Connection};
 
 const CONNECTION_FILE: &str = ".cli-m365-connection.json";
 const ALL_CONNECTIONS_FILE: &str = ".cli-m365-all-connections.json";
+const MSAL_FILE: &str = ".cli-m365-msal.json";
 
 fn home() -> Result<PathBuf, SeedError> {
     dirs::home_dir().ok_or(SeedError::HomeDir)
@@ -34,6 +35,35 @@ fn write_connection_in(base: &Path, conn: &Connection) -> Result<Vec<PathBuf>, S
     write_file(&all_path, &all_json)?;
 
     Ok(vec![conn_path, all_path])
+}
+
+pub fn write_msal_cache(additions: &serde_json::Value) -> Result<PathBuf, SeedError> {
+    write_msal_cache_in(&home()?, additions)
+}
+
+fn write_msal_cache_in(base: &Path, additions: &serde_json::Value) -> Result<PathBuf, SeedError> {
+    let path = base.join(MSAL_FILE);
+    let mut cache = read_json(&path).unwrap_or_else(|| serde_json::json!({}));
+    merge_sections(&mut cache, additions);
+    let json = serde_json::to_string_pretty(&cache)
+        .map_err(|e| SeedError::Serialize { what: "msal-cache", detail: e.to_string() })?;
+    write_file(&path, &json)?;
+    Ok(path)
+}
+
+fn merge_sections(cache: &mut serde_json::Value, additions: &serde_json::Value) {
+    let (Some(dst), Some(src)) = (cache.as_object_mut(), additions.as_object()) else {
+        return;
+    };
+    for (section, entries) in src {
+        let Some(entries) = entries.as_object() else { continue };
+        let dst_section = dst.entry(section.clone()).or_insert_with(|| serde_json::json!({}));
+        if let Some(dst_map) = dst_section.as_object_mut() {
+            for (key, value) in entries {
+                dst_map.insert(key.clone(), value.clone());
+            }
+        }
+    }
 }
 
 fn write_file(path: &Path, contents: &str) -> Result<(), SeedError> {
@@ -97,6 +127,44 @@ mod tests {
         assert_eq!(arr.len(), 2);
         assert!(arr.iter().any(|c| c["name"] == serde_json::json!("someone-else")));
 
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn msal_merge_preserves_existing_and_adds_new() {
+        let base = temp_base();
+        std::fs::write(
+            base.join(MSAL_FILE),
+            serde_json::json!({
+                "RefreshToken": { "existing-key": { "secret": "old" } },
+                "Account": {},
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let additions = serde_json::json!({
+            "RefreshToken": { "new-key": { "secret": "new", "family_id": "1" } },
+            "AppMetadata": { "am-key": { "family_id": "1" } },
+        });
+        write_msal_cache_in(&base, &additions).unwrap();
+
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(base.join(MSAL_FILE)).unwrap()).unwrap();
+        assert_eq!(v["RefreshToken"]["existing-key"]["secret"], serde_json::json!("old"));
+        assert_eq!(v["RefreshToken"]["new-key"]["secret"], serde_json::json!("new"));
+        assert_eq!(v["AppMetadata"]["am-key"]["family_id"], serde_json::json!("1"));
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn msal_create_from_absent_is_valid() {
+        let base = temp_base();
+        let additions = serde_json::json!({ "RefreshToken": { "k": { "secret": "s" } } });
+        write_msal_cache_in(&base, &additions).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(base.join(MSAL_FILE)).unwrap()).unwrap();
+        assert_eq!(v["RefreshToken"]["k"]["secret"], serde_json::json!("s"));
         std::fs::remove_dir_all(&base).ok();
     }
 }

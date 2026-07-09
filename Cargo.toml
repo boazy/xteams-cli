@@ -30,6 +30,7 @@ eyre = "0.6.12"
 color-eyre = "0.6.5"
 time = { version = "0.3", default-features = false, features = ["std", "formatting"] }
 uuid = { version = "1", features = ["v4"] }
+etcetera = "0.11.0"
 
 # v1 enforces the safety-critical denies; the full pedantic/nursery/cargo gate
 # from the programming skill is deferred to production hardening.

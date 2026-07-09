@@ -3,6 +3,8 @@
 
 use thiserror::Error;
 
+use crate::auth::CachedCredential;
+
 /// Failures while extracting credentials from the local Teams install.
 #[derive(Debug, Error)]
 pub enum CredsError {
@@ -22,7 +24,7 @@ pub enum CredsError {
     Keychain(String),
 }
 
-/// Failures while turning cookies into a usable API session.
+/// Failures while turning cookies (or an FRT-derived spaces token) into a session.
 #[derive(Debug, Error)]
 pub enum AuthError {
     #[error("could not extract an AAD bearer token from the 'authtoken' cookie")]
@@ -30,6 +32,11 @@ pub enum AuthError {
 
     #[error("Teams authz endpoint returned HTTP {status}: {body}")]
     Authz { status: u16, body: String },
+
+    #[error(
+        "Teams authz rejected the cached credential {credential:?} (HTTP 401): {body}"
+    )]
+    AuthzUnauthorized { credential: CachedCredential, body: String },
 
     #[error("authz response did not include a skype token")]
     NoSkypeToken,
@@ -45,6 +52,15 @@ pub enum ApiError {
     Http {
         endpoint: String,
         status: u16,
+        body: String,
+    },
+
+    #[error(
+        "Teams API [{endpoint}] returned HTTP 401 for cached credential {credential:?}: {body}"
+    )]
+    Unauthorized {
+        endpoint: String,
+        credential: CachedCredential,
         body: String,
     },
 }
@@ -77,17 +93,29 @@ pub enum OAuthError {
     SessionExpired,
 }
 
-/// Failures reading/writing the refresh token in the macOS Keychain.
+/// Failures reading/writing the on-disk token cache and its refresh lock.
 #[derive(Debug, Error)]
 pub enum TokenStoreError {
-    #[error("Keychain write failed: {0}")]
-    Write(String),
+    #[error("could not resolve a token-store directory (check $HOME / $XDG_STATE_HOME)")]
+    StoreDir,
 
-    #[error("Keychain read failed: {0}")]
-    Read(String),
+    #[error("failed to read the token cache at {path}: {detail}")]
+    Read { path: String, detail: String },
 
-    #[error("Keychain delete failed: {0}")]
-    Delete(String),
+    #[error("failed to write the token cache at {path}: {detail}")]
+    Write { path: String, detail: String },
+
+    #[error("the token cache at {path} is corrupt ({detail}) — run `xteams auth login` to rebuild it")]
+    Corrupt { path: String, detail: String },
+
+    #[error(
+        "another xteams process is refreshing credentials\n\
+         (lock {path} held since {since}, {age}); re-run once it finishes, or delete the lock"
+    )]
+    LockHeld { path: String, since: String, age: String },
+
+    #[error("could not manage the refresh lock at {path}: {detail}")]
+    Lock { path: String, detail: String },
 }
 
 /// Failures while seeding another CLI's credential store from xteams' tokens.

@@ -1,7 +1,7 @@
-//! Pure OAuth 2.0 device-code + refresh-grant decision logic: response parsing,
-//! poll-error classification, and access-token cache expiry. No I/O lives here —
-//! the network calls are in `device_code.rs` and the refresh grant in `auth.rs`;
-//! this is the testable core, consumed by `device_code.rs` and `authenticator.rs`.
+//! Pure OAuth 2.0 device-code + refresh-grant decision logic: response parsing and
+//! poll-error classification. No I/O lives here — the network calls are in
+//! `device_code.rs` and the refresh grant in `authenticator.rs`; this is the testable
+//! core consumed by both.
 
 use serde::Deserialize;
 
@@ -9,7 +9,6 @@ use crate::error::OAuthError;
 
 pub const FOCI_CLIENT: &str = "1fec8e78-bce4-4aaf-ab1b-5451cc387264";
 pub const DEVICE_CODE_GRANT: &str = "urn:ietf:params:oauth:grant-type:device_code";
-const DEFAULT_TTL_SECS: i64 = 3600;
 
 pub fn token_url(tenant: &str) -> String {
     format!("https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token")
@@ -107,25 +106,8 @@ pub fn error_code(body: &[u8]) -> Option<String> {
     serde_json::from_slice::<OAuthErrorBody>(body).ok().map(|body| body.error)
 }
 
-/// A minted access token with an absolute expiry, for the per-audience cache.
-#[derive(Clone)]
-pub struct CachedToken {
-    pub value: String,
-    pub expires_at_unix: i64,
-}
-
-impl CachedToken {
-    pub fn from_response(resp: &TokenResponse, now_unix: i64) -> Self {
-        let ttl = resp.expires_in.unwrap_or(DEFAULT_TTL_SECS);
-        Self { value: resp.access_token.clone(), expires_at_unix: now_unix + ttl }
-    }
-
-    pub fn is_valid(&self, now_unix: i64, skew_secs: i64) -> bool {
-        now_unix + skew_secs < self.expires_at_unix
-    }
-}
-
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -135,11 +117,10 @@ mod tests {
     #[test]
     fn classify_poll_returns_complete_on_200() {
         let outcome = classify_poll(200, TOKENS).expect("200 body should parse");
-        match outcome {
-            PollOutcome::Complete(tokens) => {
-                assert_eq!(tokens.refresh_token.as_deref(), Some("0.rt"));
-            }
-            _ => panic!("expected PollOutcome::Complete"),
+        assert!(matches!(outcome, PollOutcome::Complete(_)), "expected PollOutcome::Complete");
+        if let PollOutcome::Complete(tokens) = outcome {
+            assert_eq!(tokens.refresh_token.as_deref(), Some("0.rt"));
+            assert_eq!(tokens.expires_in, Some(3599));
         }
     }
 
@@ -167,16 +148,6 @@ mod tests {
         assert_eq!(parsed.user_code, "ABC");
         assert_eq!(parsed.interval, 5);
         assert_eq!(parsed.expires_in, 900);
-    }
-
-    #[test]
-    fn cached_token_expiry_respects_skew() {
-        let resp = parse_token(TOKENS).expect("token should parse");
-        let token = CachedToken::from_response(&resp, 1_000);
-        assert_eq!(token.expires_at_unix, 1_000 + 3599);
-        assert!(token.is_valid(1_000, 60));
-        assert!(!token.is_valid(4_600, 60));
-        assert!(!token.is_valid(4_550, 60));
     }
 
     #[test]

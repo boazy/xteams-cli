@@ -18,13 +18,20 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
                                                       chat service (IC3) ──► render
 ```
 
-1. **creds** — read the Chromium `Cookies` SQLite from the signed-in WebView
-   profile; decrypt values with a key derived from the macOS Keychain.
-2. **auth** — extract the AAD bearer from the `authtoken` cookie; POST it to Teams'
-   `authz` endpoint to get a fresh Skype token + the regional service map.
-3. **api** — call the regional chat service with the Skype token.
-4. **output** — commands return typed values; a single renderer prints human text or
-   JSON.
+**Two entry paths, unified into one `Session`:**
+
+1. **FRT-first (`xteams login`)** — when a FOCI family refresh token (FRT) is cached on
+   disk, mint an `api.spaces.skype.com` token and POST it to `authz` to derive the
+   skypetoken + regional service map. **No cookies, no Teams app** required (world 2).
+2. **Cookie fallback** — otherwise **creds** reads the Chromium `Cookies` SQLite from the
+   signed-in WebView profile (key derived from the macOS Keychain), extracts the AAD
+   bearer from `authtoken`, and posts it to the same `authz` endpoint. Silent, but limited
+   to the chat service (world 1).
+
+Both paths yield the same `Session` (skypetoken + region + `regionGtms`). **api** then
+calls the regional chat service with the skypetoken; bearer features
+(`team`/`user`/`calendar`) mint per-audience tokens from the FRT. **output** — commands
+return typed values; a single renderer prints human text or JSON.
 
 ## 2. Module map
 
@@ -34,11 +41,16 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
 | `src/cli.rs` | clap derive: two-tier `<noun> <verb>` tree + global `--cookies`, `-j/--json`. |
 | `src/link.rs` | Parse Teams deep links (`/l/…` URLs) into `TeamsDeepLinkFields`; resolve a conversation argument that may be a link. |
 | `src/creds.rs` | macOS credential extraction (Keychain → PBKDF2 → AES-128-CBC; SQLite cookie read). |
-| `src/auth.rs` | `Session` (cookie→authz); `build_client`; `Authenticator` re-export + `load/login_authenticator` helpers. |
-| `src/auth/oauth.rs` | Pure device-code/refresh logic: response parsing, poll-error classification, token-cache expiry (unit-tested). |
+| `src/auth.rs` | Orchestration root: FRT-first `connect` (else cookie fallback); `build_client`; `SPACES_RESOURCE`; re-exports + `load/login_authenticator` helpers. |
+| `src/auth/session.rs` | `Session` (skypetoken + region + gtms + identity + credential tag); cookie `establish`; FRT `from_skype_session`; shared `authz` POST + response parsing. |
+| `src/auth/authenticator.rs` | `Authenticator`: FRT → per-audience bearer tokens + skype session, backed by the on-disk cache (lock-free reads; mutations under `CacheLock`); `invalidate_credential`; `logout`. |
+| `src/auth/token_cache.rs` | Pure cache model (`TokenCache`, `StoredAccessToken`, `StoredSkypeSession`) + validity/invalidation (unit-tested; no I/O, no clock). |
+| `src/auth/token_cache_io.rs` | Store path via `etcetera::choose_app_strategy` (XDG state dir — `~/.local/state/xteams/token-cache.json`, honoring `$XDG_STATE_HOME`; data dir on Windows), tolerant load, atomic `0600` save (temp+fsync+rename), delete. |
+| `src/auth/lock.rs` | `AuthInteraction` (may-prompt) + `CacheLock`: single-writer lock (`create_new`); stale (>60s) → stderr prompt or `LockHeld`; self-only `Drop` release. |
+| `src/auth/credential.rs` | `CachedCredential`/`SessionCredential` tags + `credential_to_invalidate` (scans the `eyre` chain for a rejected token). |
+| `src/auth/jwt.rs` | Pure JWT claim decoding: identity (upn/name/tid), audience/TTL, `jwt_expiry`, shared `now_unix` (unit-tested). |
+| `src/auth/oauth.rs` | Pure device-code/refresh logic: response parsing + poll-error classification (unit-tested). |
 | `src/auth/device_code.rs` | Interactive device-code sign-in loop (prompt on stderr; polls the token endpoint). |
-| `src/auth/authenticator.rs` | `Authenticator`: FOCI refresh token → per-audience bearer tokens (cached); lazy region discovery. |
-| `src/auth/store.rs` | macOS Keychain store for the FOCI refresh token (service `xteams`, account `foci-refresh`). |
 | `src/api.rs` | `ApiClient` (skypetoken chat) + shared `send_ok` non-2xx→error mapping. |
 | `src/api/chat.rs` | Chat-service (IC3) ops: conversations, messages, threads, post/edit/react. |
 | `src/api/csa.rs` | chatsvcagg (CSA) team/channel roster (`Authorization: Bearer`). |
@@ -89,27 +101,54 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
     `Session.gtms`.
   - `chatService` = `https://<region>.ng.msg.teams.microsoft.com`. **Region is
     auto-discovered — never hardcode it.**
-- `Session { skype_token, region, chat_service, gtms, identity }`.
-- `identity` (upn/name/tenant/audience/exp) is decoded from the AAD JWT claims with
-  **no signature verification** (display/metadata only).
+- `Session { skype_token, region, chat_service, gtms, identity, credential }` — `credential`
+  tags the source (FRT skype session vs cookie) so a chat 401 evicts the right cache entry.
+- `identity` (upn/name/tid) is decoded from the backing AAD JWT (cookie `authtoken` or the
+  FRT-minted spaces token) with **no signature verification** (display/metadata only).
+- Both paths share the `authz` POST in `auth/session.rs`; a 401 on a **cached** spaces
+  token (FRT path) becomes `AuthError::AuthzUnauthorized` (evict + re-mint), while a
+  cookie-path 401 stays a plain `AuthError::Authz`.
 
-### Device-code (FOCI) token path (`auth/`)
+### FRT / FOCI token path (`auth/`) — primary, persistent
 
-The cookie path yields only `api.spaces.skype.com` + skypetoken. Features that need
-other audiences (teams/channels, people search, calendar) use an OAuth 2.0
-**device-code** grant against the Teams **FOCI** public client
-`1fec8e78-bce4-4aaf-ab1b-5451cc387264`:
+`xteams login` runs an OAuth 2.0 **device-code** grant against the Teams **FOCI** public
+client `1fec8e78-bce4-4aaf-ab1b-5451cc387264` (`auth/device_code.rs`: prints the code on
+**stderr**, polls `…/oauth2/v2.0/token`). The resulting **family refresh token (FRT)** can
+mint a token for *any* audience — including `api.spaces.skype.com`, which drives the chat
+service via `authz` — so once signed in, xteams needs **no cookies and no Teams app**
+(world 2). Without an FRT it falls back to cookies (world 1: silent, chat-only).
 
-- `xteams login` (`auth/device_code.rs`) requests a device code, prints it on
-  **stderr**, and polls `…/oauth2/v2.0/token` until sign-in. The resulting **family
-  refresh token** is stored in the macOS Keychain (`auth/store.rs`) — never a plaintext
-  file. `xteams logout` deletes it.
-- `Authenticator` (`auth/authenticator.rs`) redeems that refresh token for a
-  per-audience access token on demand (`grant_type=refresh_token`,
-  `scope=<resource>/.default offline_access`), caches each in memory until ~1 min before
-  expiry, and rotates the stored refresh token when the endpoint returns a new one.
-- Region for CSA is discovered lazily (spaces token → `authz`), so the bearer features
-  need no cookies. Tenant defaults to `organizations`.
+**Persistent token cache** (`auth/token_cache.rs` + `auth/token_cache_io.rs`) — a single
+JSON file in the XDG **state** dir via `etcetera` (`~/.local/state/xteams/token-cache.json`, honoring `$XDG_STATE_HOME`; the data dir on Windows), `0600`,
+holding the FRT, every per-audience access token (with absolute expiry), the derived skype
+session (skypetoken + region + `regionGtms` + expiry), and identity. A valid cached token
+is used directly with **no network and no FRT refresh**; the FRT is redeemed (and possibly
+rotated) only when a token is missing/expired. `xteams logout` deletes the file.
+
+- **`Authenticator`** (`auth/authenticator.rs`) is disk-backed. `token_for(resource)`:
+  read cache lock-free → if valid, return; else acquire the cache lock, **reload +
+  double-check** (a sibling process may have just minted it), redeem
+  (`grant_type=refresh_token`, `scope=<resource>/.default offline_access`), persist the new
+  token + any rotated FRT, release. `skype_session()` derives + caches the skypetoken via
+  spaces→`authz`; its expiry = `min(skypeToken.exp, spaces.exp)`, else the spaces exp, else
+  a 45-min fallback. `region()` reuses it. Tenant defaults to `organizations`.
+- **Concurrency (`auth/lock.rs`)** — every cache *mutation* runs under `CacheLock`, a
+  `refresh.lock` file created with `create_new` (contents `{pid, started_at}`). A contender
+  polls (~200ms); a **stale** lock (>60s) prompts on stderr to delete-and-continue when
+  interactive (TTY & not `-j`), else returns `TokenStoreError::LockHeld`. `Drop` removes the
+  lock only if it still holds our marker (never another process's). The all-valid read path
+  takes no lock; atomic save (temp+fsync+rename) + the lock give lost-update-free
+  read-modify-write.
+- **401 invalidation** — a rejected cached token surfaces as `ApiError::Unauthorized`
+  (any API) or `AuthError::AuthzUnauthorized` (authz on a cached spaces token), tagged with
+  a `CachedCredential`. `commands::dispatch` wraps the run, scans the `eyre` chain
+  (`credential_to_invalidate`), evicts exactly that entry under the lock, and asks the user
+  to re-run — the next run re-mints it. An `invalid_grant` on the FRT itself clears the
+  whole cache (sign in again).
+- **Storage location:** the FRT is durable auth state, so it lives in the XDG **state**
+  dir (via `etcetera::choose_app_strategy`), not a cache dir — deliberately, so a cache
+  cleaner won't sign you out. Secure cross-platform storage (`keyring-core`) is a planned
+  future option.
 - The OneAuth broker's own refresh-token cache is **not** readable by an unsigned CLI
   (Keychain access-group scoped — confirmed via `SecItemCopyMatching`: `errSecItemNotFound`),
   which is why device-code is used instead of extracting it.
@@ -249,9 +288,9 @@ Token / audience matrix:
 
 | Token | Source | Audience(s) | Unlocks |
 |-------|--------|-------------|---------|
-| `skypetoken` | cookie `authz` | (Skype/IC3) | chat service |
-| `authtoken` (AAD) | cookie | `api.spaces.skype.com` | `authz` |
-| FOCI **family refresh token** | `xteams login` (device-code) | any, redeemed per-audience | chatsvcagg, substrate, graph, spaces |
+| FOCI **family refresh token** | `xteams login` (device-code); cached in `token-cache.json` | any, redeemed per-audience | chatsvcagg, substrate, graph, **spaces → authz → skypetoken** |
+| `skypetoken` (+ region + gtms) | `authz` (FRT spaces token, else cookie AAD); cached | Skype/IC3 | chat service |
+| `authtoken` (AAD) | cookie fallback only | `api.spaces.skype.com` | `authz` |
 
 - **Not extractable:** the OneAuth broker's refresh-token cache is Keychain items scoped
   to the app's entitlement (`com.microsoft.oneauth.<oid>`) — an unsigned CLI gets
@@ -294,9 +333,10 @@ renewal.
 - **Scope:** the token carries the Teams first-party client's delegated Graph scopes;
   m365 commands needing a scope Teams lacks return HTTP 403. Only the Graph resource is
   seeded — m365 keys tokens per resource, so SharePoint/PowerApps/etc. are not covered.
-- **Shared refresh token:** `refresh` mode places the *same* RT in both xteams' Keychain
-  and m365's MSAL cache. If AAD rotates it on one side the other's copy may go stale; the
-  FOCI family RT is long-lived, and re-running `auth seed m365` re-syncs both.
+- **Shared refresh token:** `refresh` mode places the *same* RT in both xteams'
+  `token-cache.json` and m365's MSAL cache. If AAD rotates it on one side the other's copy
+  may go stale; the FOCI family RT is long-lived, and re-running `auth seed m365` re-syncs
+  both. (`Authenticator::refresh_token` reads the RT from the on-disk cache.)
 
 Modules: `src/seed.rs` (orchestrator + token mint/identity + `TokenType` branch),
 `src/seed/connection.rs` (pure `connection.json` builders), `src/seed/msal_cache.rs`
@@ -320,3 +360,10 @@ cargo clippy            # must be clean; unwrap/expect/panic are hard-denied
 There is **no mock backend** — QA is done by running the binary against a real,
 signed-in account. Test write operations against the private self-notes space
 (`48:notes`), which is not visible to anyone else.
+
+- Signed-in (FRT) runs use `~/.local/state/xteams/token-cache.json`; `xteams logout` (or
+  deleting that file) resets to a clean state, and the cookie fallback needs a signed-in
+  New Teams.
+- Routing/lock logic is testable offline without live creds: point `$XDG_STATE_HOME` at a
+  temp dir with a `token-cache.json` (a bogus FRT exercises the FRT-first path and
+  `invalid_grant` cleanup; a pre-seeded stale `refresh.lock` + `-j` exercises `LockHeld`).

@@ -6,7 +6,7 @@ use eyre::Result;
 use reqwest::Method;
 
 use super::send_ok;
-use crate::auth::Authenticator;
+use crate::auth::{Authenticator, CachedCredential};
 use crate::model::{CsaUpdates, Team};
 
 const CHATSVCAGG: &str = "https://chatsvcagg.teams.microsoft.com";
@@ -19,6 +19,6 @@ pub async fn list_teams(auth: &Authenticator) -> Result<Vec<Team>> {
         .authed(CHATSVCAGG, Method::GET, &url)
         .await?
         .header("x-ms-client-version", CLIENT_VERSION);
-    let resp = send_ok(request, "GET csa teams/updates").await?;
+    let resp = send_ok(request, "GET csa teams/updates", Some(CachedCredential::access(CHATSVCAGG))).await?;
     Ok(resp.json::<CsaUpdates>().await?.teams)
 }

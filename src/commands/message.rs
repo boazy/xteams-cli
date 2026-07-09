@@ -5,6 +5,7 @@ use std::path::Path;
 use eyre::{Result, eyre};
 
 use crate::api::{ApiClient, chat};
+use crate::auth::AuthInteraction;
 use crate::cli::{
     MessageEditArgs, MessageListArgs, MessageNewArgs, MessageReactArgs, MessageRefArgs, MessageVerb,
 };
@@ -13,7 +14,7 @@ use crate::model::{Message, MessageAction};
 use crate::output::{MessageList, render};
 
 pub async fn dispatch(verb: MessageVerb, cookies: Option<&Path>, json: bool) -> Result<()> {
-    let client = ApiClient::connect(cookies).await?;
+    let client = ApiClient::connect(cookies, AuthInteraction::from_json(json)).await?;
     match verb {
         MessageVerb::New(args) => render(&new(&client, args).await?, json),
         MessageVerb::List(args) => render(&list(&client, args).await?, json),

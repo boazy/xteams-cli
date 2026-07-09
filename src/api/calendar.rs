@@ -8,7 +8,7 @@ use time::format_description::well_known::Rfc3339;
 use time::{Duration, OffsetDateTime};
 
 use super::send_ok;
-use crate::auth::Authenticator;
+use crate::auth::{Authenticator, CachedCredential};
 use crate::model::{CalendarEvent, CalendarView};
 
 const GRAPH: &str = "https://graph.microsoft.com";
@@ -27,6 +27,6 @@ pub async fn calendar_view(auth: &Authenticator, days: i64) -> Result<Vec<Calend
             ("$orderby", "start/dateTime".to_owned()),
             ("$top", "50".to_owned()),
         ]);
-    let resp = send_ok(request, "GET graph calendarView").await?;
+    let resp = send_ok(request, "GET graph calendarView", Some(CachedCredential::access(GRAPH))).await?;
     Ok(resp.json::<CalendarView>().await?.value)
 }

@@ -120,9 +120,14 @@ prompt recurring.
 `team list/search`, `user search`, and `calendar` talk to service audiences
 (`chatsvcagg.teams.microsoft.com`, `substrate.office.com`, Microsoft Graph) that the
 desktop cookies don't cover. Run **`xteams login`** once — a device-code sign-in you
-complete in your browser — and `xteams` stores a refresh token in your Keychain, then
-mints the per-audience tokens on demand (silent for ~90 days). `xteams logout` forgets
-it.
+complete in your browser — and `xteams` caches a FOCI **family refresh token** in
+`~/.local/state/xteams/token-cache.json` (the XDG state dir, owner-only `0600`), then mints the per-audience
+tokens on demand (silent for ~90 days). `xteams logout` forgets it.
+
+Once signed in, that refresh token also drives the **chat** commands (it can mint the
+skypetoken itself), so a logged-in `xteams` needs **no cookies and no running Teams
+app** — handy where Teams isn't installed. Without login, `xteams` still works silently
+from the desktop cookies, limited to the chat/message/thread/channel commands.
 
 `team join` is still deferred: it is a write operation and its endpoint is unverified.
 
@@ -154,19 +159,24 @@ first — then use m365 as usual, e.g. `m365 status` or `m365 entra user get --i
    Keychain key.
 2. Exchange the AAD token for a Skype token + regional endpoints via Teams' `authz`.
 3. Call the internal chat service with the Skype token.
-4. For `team` / `user` / `calendar`, `xteams login` runs an OAuth device-code sign-in
-   to obtain a FOCI family refresh token (stored in the Keychain), then mints
-   per-audience tokens for `chatsvcagg`, `substrate`, and Microsoft Graph on demand.
+4. `xteams login` runs an OAuth device-code sign-in to obtain a FOCI family refresh
+   token, cached (with the minted access tokens + skype session) in
+   `~/.local/state/xteams/token-cache.json` (the XDG state dir). It mints per-audience tokens for `chatsvcagg`,
+   `substrate`, and Microsoft Graph on demand — and can derive the skypetoken too, so
+   when signed in even the chat commands run without cookies or the Teams app.
 
 Full technical detail: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Security notes
 
-- `xteams` reads live access tokens for your account and keeps them in memory for the
-  duration of a command — **except** `auth seed m365`, whose whole purpose is to write a
-  Graph token (and, in `refresh` mode, the refresh token) into the **m365 CLI's own
-  credential store** (`~/.cli-m365-*.json`). m365/MSAL keep those as plaintext JSON, so
-  treat them like any other on-disk credential.
+- After `xteams login`, `xteams` caches your FOCI refresh token, the minted access
+  tokens, and the derived skype session as plaintext JSON in
+  `~/.local/state/xteams/token-cache.json` (the XDG state dir, owner-only `0600`) so later commands don't
+  re-authenticate every time. Treat it like any other on-disk credential; `xteams logout`
+  deletes it. (Cookie-only, not-logged-in usage keeps tokens in memory for the command.)
+- `auth seed m365` additionally writes a Graph token (and, in `refresh` mode, the refresh
+  token) into the **m365 CLI's own credential store** (`~/.cli-m365-*.json`), also as
+  plaintext JSON.
 - It uses undocumented APIs and may stop working when Microsoft changes them.
 - Respect your organization's policies.
 

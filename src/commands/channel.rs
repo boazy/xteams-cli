@@ -7,6 +7,7 @@ use std::path::Path;
 use eyre::Result;
 
 use crate::api::{ApiClient, chat};
+use crate::auth::AuthInteraction;
 use crate::cli::ChannelVerb;
 use crate::model::Conversation;
 use crate::output::render;
@@ -14,7 +15,7 @@ use crate::output::render;
 const SCAN_LIMIT: u32 = 200;
 
 pub async fn dispatch(verb: ChannelVerb, cookies: Option<&Path>, json: bool) -> Result<()> {
-    let client = ApiClient::connect(cookies).await?;
+    let client = ApiClient::connect(cookies, AuthInteraction::from_json(json)).await?;
     let channels: Vec<Conversation> = chat::list_conversations(&client, SCAN_LIMIT)
         .await?
         .into_iter()

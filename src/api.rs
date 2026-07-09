@@ -5,7 +5,7 @@ use std::path::Path;
 use eyre::Result;
 use reqwest::Method;
 
-use crate::auth::{self, Session};
+use crate::auth::{self, AuthInteraction, CachedCredential, Session};
 use crate::error::ApiError;
 
 pub mod calendar;
@@ -22,8 +22,8 @@ pub struct ApiClient {
 }
 
 impl ApiClient {
-    pub async fn connect(cookies: Option<&Path>) -> Result<Self> {
-        let (http, session) = auth::connect(cookies).await?;
+    pub async fn connect(cookies: Option<&Path>, interaction: AuthInteraction) -> Result<Self> {
+        let (http, session) = auth::connect(cookies, interaction).await?;
         Ok(Self { http, session })
     }
 
@@ -39,27 +39,29 @@ impl ApiClient {
     }
 
     async fn exec(&self, request: reqwest::RequestBuilder, endpoint: &str) -> Result<reqwest::Response> {
-        send_ok(request, endpoint).await
+        send_ok(request, endpoint, self.session.credential.cached_credential()).await
     }
 }
 
-/// Send a request and map any non-2xx response to `ApiError::Http`. Shared by the
-/// skypetoken chat path and the bearer-token (chatsvcagg/substrate/graph) paths.
+/// Send a request and map any non-2xx to `ApiError`. A 401 carrying a known cached
+/// credential becomes `ApiError::Unauthorized` so the top-level handler can evict
+/// exactly that token; otherwise it maps to `ApiError::Http`. Shared by the skypetoken
+/// chat path and the bearer-token (chatsvcagg/substrate/graph) paths.
 pub(crate) async fn send_ok(
     request: reqwest::RequestBuilder,
     endpoint: &str,
+    credential: Option<CachedCredential>,
 ) -> Result<reqwest::Response> {
     let resp = request.send().await?;
     let status = resp.status();
     if status.is_success() {
-        Ok(resp)
-    } else {
-        let body = resp.text().await.unwrap_or_default();
-        Err(ApiError::Http {
-            endpoint: endpoint.to_owned(),
-            status: status.as_u16(),
-            body: body.chars().take(240).collect(),
-        }
-        .into())
+        return Ok(resp);
     }
+    let body: String = resp.text().await.unwrap_or_default().chars().take(240).collect();
+    if status == reqwest::StatusCode::UNAUTHORIZED
+        && let Some(credential) = credential
+    {
+        return Err(ApiError::Unauthorized { endpoint: endpoint.to_owned(), credential, body }.into());
+    }
+    Err(ApiError::Http { endpoint: endpoint.to_owned(), status: status.as_u16(), body }.into())
 }

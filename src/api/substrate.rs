@@ -9,7 +9,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::send_ok;
-use crate::auth::Authenticator;
+use crate::auth::{Authenticator, CachedCredential};
 use crate::model::{Person, SubstrateSuggestions};
 
 const SUBSTRATE: &str = "https://substrate.office.com";
@@ -34,6 +34,6 @@ pub async fn search_people(auth: &Authenticator, query: &str, limit: u32) -> Res
         .header("Origin", TEAMS_ORIGIN)
         .header("Referer", format!("{TEAMS_ORIGIN}/"))
         .json(&body);
-    let resp = send_ok(request, "POST substrate suggestions").await?;
+    let resp = send_ok(request, "POST substrate suggestions", Some(CachedCredential::access(SUBSTRATE))).await?;
     Ok(resp.json::<SubstrateSuggestions>().await?.people())
 }

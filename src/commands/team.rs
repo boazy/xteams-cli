@@ -4,19 +4,20 @@
 use eyre::{Result, bail};
 
 use crate::api::csa;
-use crate::auth;
+use crate::auth::{self, AuthInteraction};
 use crate::cli::TeamVerb;
 use crate::model::Team;
 use crate::output::render;
 
 pub async fn dispatch(verb: TeamVerb, json: bool) -> Result<()> {
+    let interaction = AuthInteraction::from_json(json);
     match verb {
         TeamVerb::List => {
-            let authenticator = auth::load_authenticator().await?;
+            let authenticator = auth::load_authenticator(interaction)?;
             render(&csa::list_teams(&authenticator).await?, json)
         }
         TeamVerb::Search(args) => {
-            let authenticator = auth::load_authenticator().await?;
+            let authenticator = auth::load_authenticator(interaction)?;
             let teams: Vec<Team> = csa::list_teams(&authenticator)
                 .await?
                 .into_iter()

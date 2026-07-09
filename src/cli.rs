@@ -78,6 +78,11 @@ pub enum AuthVerb {
     Login,
     /// Remove the stored device-code sign-in.
     Logout,
+    /// Seed another CLI's credential store from xteams' tokens.
+    Seed {
+        #[command(subcommand)]
+        target: SeedTarget,
+    },
 }
 
 #[derive(Debug, clap::Args)]
@@ -86,6 +91,15 @@ pub struct AuthStatusArgs {
     #[arg(long)]
     pub include_tokens: bool,
 }
+
+#[derive(Debug, Subcommand)]
+pub enum SeedTarget {
+    /// Seed the m365 CLI (pnp/cli-microsoft365) so it can call Microsoft Graph.
+    M365(SeedM365Args),
+}
+
+#[derive(Debug, clap::Args)]
+pub struct SeedM365Args {}
 
 #[derive(Debug, Subcommand)]
 pub enum ChatVerb {

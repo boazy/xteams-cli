@@ -43,6 +43,15 @@ pub struct Identity {
     pub tenant: Option<String>,
 }
 
+/// Identity claims pulled from a Graph access-token JWT, used to seed other CLIs'
+/// credential stores (they key on `oid`/`tid`, which `Identity` does not carry).
+#[derive(Debug, Clone, Default)]
+pub struct GraphIdentity {
+    pub oid: Option<String>,
+    pub upn: Option<String>,
+    pub tid: Option<String>,
+}
+
 /// Build a reqwest client, load local cookies, and establish a session.
 pub async fn connect(cookies: Option<&Path>) -> Result<(reqwest::Client, Session)> {
     let path = match cookies {
@@ -158,6 +167,20 @@ fn decode_claims(jwt: &str) -> Option<serde_json::Map<String, serde_json::Value>
     serde_json::from_slice(&bytes).ok()
 }
 
+/// Extract the seed-relevant identity claims (`oid`, `upn`, `tid`) from a Graph
+/// access-token JWT. Returns defaults for a non-decodable token.
+pub fn graph_identity(jwt: &str) -> GraphIdentity {
+    let Some(claims) = decode_claims(jwt) else {
+        return GraphIdentity::default();
+    };
+    let get = |key: &str| claims.get(key).and_then(|v| v.as_str()).map(str::to_owned);
+    GraphIdentity {
+        oid: get("oid"),
+        upn: get("upn").or_else(|| get("preferred_username")),
+        tid: get("tid"),
+    }
+}
+
 fn truncate(s: &str, max: usize) -> String {
     s.chars().take(max).collect()
 }
@@ -221,5 +244,35 @@ mod tests {
         let (aud, ttl) = jwt_audience_and_ttl("1.AcoOpaqueRefreshTokenNotAJwt.q0qw");
         assert_eq!(aud, None);
         assert_eq!(ttl, None);
+    }
+
+    fn fake_jwt_claims(claims: serde_json::Value) -> String {
+        let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(claims.to_string());
+        format!("eyJhbGciOiJub25lIn0.{encoded}.sig")
+    }
+
+    #[test]
+    fn graph_identity_extracts_oid_upn_tid() {
+        let jwt = fake_jwt_claims(serde_json::json!({
+            "oid": "11111111-1111-1111-1111-111111111111",
+            "upn": "user@contoso.com",
+            "tid": "22222222-2222-2222-2222-222222222222",
+        }));
+        let id = graph_identity(&jwt);
+        assert_eq!(id.oid.as_deref(), Some("11111111-1111-1111-1111-111111111111"));
+        assert_eq!(id.upn.as_deref(), Some("user@contoso.com"));
+        assert_eq!(id.tid.as_deref(), Some("22222222-2222-2222-2222-222222222222"));
+    }
+
+    #[test]
+    fn graph_identity_falls_back_to_preferred_username() {
+        let jwt = fake_jwt_claims(serde_json::json!({
+            "oid": "abc",
+            "preferred_username": "pref@contoso.com",
+            "tid": "def",
+        }));
+        let id = graph_identity(&jwt);
+        assert_eq!(id.upn.as_deref(), Some("pref@contoso.com"));
+        assert_eq!(id.oid.as_deref(), Some("abc"));
     }
 }

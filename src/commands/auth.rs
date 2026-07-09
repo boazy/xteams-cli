@@ -5,7 +5,7 @@ use std::path::Path;
 use eyre::Result;
 
 use crate::auth::{self, Authenticator};
-use crate::cli::AuthVerb;
+use crate::cli::{AuthVerb, SeedTarget};
 use crate::model::{AuthAction, AuthStatus, TokenInfo};
 use crate::output::render;
 
@@ -26,6 +26,12 @@ pub async fn dispatch(verb: AuthVerb, cookies: Option<&Path>, json: bool) -> Res
             auth::logout()?;
             render(&AuthAction { action: "logout", signed_in: false }, json)
         }
+        AuthVerb::Seed { target } => match target {
+            SeedTarget::M365(_args) => {
+                let authenticator = auth::load_authenticator().await?;
+                render(&crate::seed::seed_m365_access(&authenticator).await?, json)
+            }
+        },
     }
 }
 

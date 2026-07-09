@@ -10,6 +10,7 @@ mod error;
 mod link;
 mod model;
 mod output;
+mod seed;
 
 use clap::Parser;
 

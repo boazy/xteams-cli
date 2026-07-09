@@ -6,8 +6,8 @@ use eyre::Result;
 use serde::Serialize;
 
 use crate::model::{
-    AuthAction, AuthStatus, CalendarEvent, Conversation, Message, MessageAction, Person, Team,
-    Thread, TokenInfo,
+    AuthAction, AuthStatus, CalendarEvent, Conversation, Message, MessageAction, Person, SeedResult,
+    Team, Thread, TokenInfo,
 };
 
 pub trait DisplayOutput {
@@ -203,6 +203,22 @@ impl DisplayOutput for TokenInfo {
             line.push_str(&format!("  token={value}"));
         }
         line
+    }
+}
+
+impl DisplayOutput for SeedResult {
+    fn display_output(&self) -> String {
+        let who = self.identity.as_deref().unwrap_or("<unknown>");
+        let exp = self.expires_in_min.map_or_else(|| "n/a".to_owned(), |min| format!("{min} min"));
+        let mut lines = vec![
+            format!("Seeded {} ({} token) for {who}", self.target, self.token_type),
+            format!("Resource  : {}", self.resource),
+            format!("Expires   : {exp}"),
+        ];
+        for path in &self.wrote {
+            lines.push(format!("Wrote     : {path}"));
+        }
+        lines.join("\n")
     }
 }
 

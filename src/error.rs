@@ -89,3 +89,19 @@ pub enum TokenStoreError {
     #[error("Keychain delete failed: {0}")]
     Delete(String),
 }
+
+/// Failures while seeding another CLI's credential store from xteams' tokens.
+#[derive(Debug, Error)]
+pub enum SeedError {
+    #[error("could not resolve your home directory")]
+    HomeDir,
+
+    #[error("failed to serialize {what}: {detail}")]
+    Serialize { what: &'static str, detail: String },
+
+    #[error("failed to write {path}: {detail}")]
+    Write { path: String, detail: String },
+
+    #[error("the Graph token is missing oid/tid claims — run `xteams auth login` first")]
+    NoIdentity,
+}

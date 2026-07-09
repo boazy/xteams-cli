@@ -215,6 +215,18 @@ pub struct AuthAction {
     pub signed_in: bool,
 }
 
+#[derive(Debug, Serialize)]
+pub struct SeedResult {
+    pub target: &'static str,
+    pub token_type: &'static str,
+    pub resource: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identity: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_in_min: Option<i64>,
+    pub wrote: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct SubstrateSuggestions {
     #[serde(rename = "Groups", default)]

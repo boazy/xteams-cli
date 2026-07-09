@@ -44,9 +44,12 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
 | `src/api/csa.rs` | chatsvcagg (CSA) team/channel roster (`Authorization: Bearer`). |
 | `src/api/substrate.rs` | substrate.office.com people search. |
 | `src/api/calendar.rs` | Microsoft Graph calendar view. |
+| `src/seed.rs` | `auth seed <target>`: mint a Graph token + identity, orchestrate the per-target store writers. |
+| `src/seed/connection.rs` | Pure builders for the m365 CLI `connection.json` (+ all-connections upsert); unit-tested. |
+| `src/seed/store.rs` | m365 store file I/O (home-dir paths, writes) → `SeedError`. |
 | `src/model.rs` | serde response types + result/status types. |
 | `src/output.rs` | `DisplayOutput` trait, `render(value, json)`, list/message formatting. |
-| `src/error.rs` | Typed `thiserror` errors: `CredsError`, `AuthError`, `ApiError`, `OAuthError`, `TokenStoreError`. |
+| `src/error.rs` | Typed `thiserror` errors: `CredsError`, `AuthError`, `ApiError`, `OAuthError`, `TokenStoreError`, `SeedError`. |
 | `src/commands/*.rs` | One module per noun; handlers return data values, never print. |
 | `poc/` | Throwaway Python discovery scripts (credential PoC, endpoint/audience probes). |
 
@@ -70,7 +73,7 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
     plaintext; we return whichever candidate (with/without the 32-byte prefix) is
     valid printable UTF-8.
 - On macOS `Local State` has **no** `os_crypt.encrypted_key` (that is the Windows
-  DPAPI path — see §10).
+  DPAPI path — see §11).
 
 ## 4. Token model (`auth.rs`)
 
@@ -186,6 +189,7 @@ other audiences (teams/channels, people search, calendar) use an OAuth 2.0
 - `thread list <conv> [-n] [-a]` → threads (roots via `list_threads`; `-a` adds each
   root's replies); `thread read <conv> <root>` → one thread chronologically
 - `login` / `logout` → device-code sign-in / clear the stored refresh token (`AuthAction`)
+- `auth seed m365` → mint a Graph access token and write it into the m365 CLI's connection store (`SeedResult`); see §10
 - `team list` / `team search <q>` → teams via CSA (`Vec<Team>`); `team join` still
   deferred (a write op; endpoint unverified)
 - `user search <q>` → people via substrate (`Vec<Person>`)
@@ -255,13 +259,41 @@ Token / audience matrix:
 - Full investigation brief: **[docs/oneauth-handoff.md](docs/oneauth-handoff.md)**;
   discovery probes: `poc/mint_tokens.py`, `poc/probe_*.py`, `poc/extract_teams_creds.py`.
 
-## 10. Windows (future)
+## 10. Credential seeding (`auth seed`)
+
+`auth seed <target>` writes xteams' FOCI-minted tokens into *another* CLI's on-disk
+credential store, so that tool can call Microsoft Graph without its own sign-in. Logic
+lives in `src/seed/`; only `output::render` prints (returns a `SeedResult`, `-j` aware).
+
+Current target: **m365** (pnp/cli-microsoft365).
+
+- `xteams auth seed m365` mints a Graph access token (`Authenticator::token_for`,
+  resource `https://graph.microsoft.com`), decodes `oid`/`upn`/`tid` from the JWT
+  (`auth::graph_identity`), and writes an **active** `Connection` to
+  `~/.cli-m365-connection.json`, mirrored into `~/.cli-m365-all-connections.json`.
+- The token is stored under `accessTokens["https://graph.microsoft.com"]` with an
+  ISO-8601 `expiresOn`. m365's `ensureAccessToken` returns a present, unexpired token
+  **directly — MSAL is never invoked** — so the access path needs no configured client
+  id and no interactive login. `appId` is set to the Azure CLI FOCI client
+  `04b07795-8ddb-461a-bbee-02f9e1bf7b46`; `tenant` = `common`, `cloudType` = `Public`.
+- **Scope:** the token carries the Teams first-party client's delegated Graph scopes;
+  m365 commands needing a scope Teams lacks return HTTP 403. Only the Graph resource is
+  seeded — m365 keys tokens per resource, so SharePoint/PowerApps/etc. are not covered.
+- **Lifetime:** the Graph access token lasts ~1 h and this path stores no refresh token,
+  so re-run `xteams auth seed m365` before it expires (otherwise m365 falls through to
+  its own MSAL/login once the token lapses).
+
+Modules: `src/seed.rs` (orchestrator + token mint/identity), `src/seed/connection.rs`
+(pure `connection.json` builders, unit-tested), `src/seed/store.rs` (home-dir paths +
+file writes → `SeedError`).
+
+## 11. Windows (future)
 
 Same EBWebView layout, but cookies are **AES-256-GCM** with the key stored in
 `Local State` → `os_crypt.encrypted_key`, DPAPI-unwrapped via `CryptUnprotectData`.
 Add a `#[cfg(windows)]` path in `creds.rs`; the rest of the pipeline is unchanged.
 
-## 11. Build / QA
+## 12. Build / QA
 
 ```sh
 cargo build

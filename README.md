@@ -24,6 +24,7 @@ holds — the same way the app itself talks to the backend.
 | Chats, messages, threads, posting, editing, reactions | ✅ working |
 | Channel list / search (channels you follow) | ✅ working |
 | Team list / search, user search, calendar (via `xteams login`) | ✅ working |
+| Seed the m365 CLI (`auth seed m365`) with a Graph token | ✅ working |
 | Team join | ⏳ deferred (write op; endpoint unverified) |
 | Windows | ⏳ not yet (design accounts for it) |
 
@@ -51,6 +52,7 @@ for machine-readable output.
 xteams auth                                   # who am I? token status
 xteams login                                   # device-code sign-in (unlocks team/user/calendar)
 xteams logout                                  # forget the device-code sign-in
+xteams auth seed m365                          # let the m365 CLI use your Graph token (see below)
 xteams chat list [-n N]                        # recent 1:1 / group chats
 xteams channel list [team]                     # channels you follow (optional name filter)
 xteams channel search <query>                  # find channels by name
@@ -123,6 +125,21 @@ mints the per-audience tokens on demand (silent for ~90 days). `xteams logout` f
 it.
 
 `team join` is still deferred: it is a write operation and its endpoint is unverified.
+
+## Use your tokens with the m365 CLI
+
+`xteams auth seed m365` writes a Microsoft Graph access token into the
+[m365 CLI](https://github.com/pnp/cli-microsoft365)'s connection store
+(`~/.cli-m365-connection.json`), so `m365` can call Graph without its own sign-in:
+
+```sh
+xteams auth seed m365      # then, e.g.: m365 status  •  m365 entra user get --id <guid>
+```
+
+The seeded token lasts about an hour and carries the Teams client's Graph scopes
+(m365 commands needing a scope Teams doesn't hold return HTTP 403). Re-run
+`xteams auth seed m365` before it expires — this path stores no refresh token for m365
+to renew from. Requires `xteams login` first.
 
 ## How it works (short version)
 

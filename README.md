@@ -172,4 +172,4 @@ Full technical detail: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## License
 
-MIT OR Apache-2.0.
+MIT

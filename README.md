@@ -128,18 +128,25 @@ it.
 
 ## Use your tokens with the m365 CLI
 
-`xteams auth seed m365` writes a Microsoft Graph access token into the
-[m365 CLI](https://github.com/pnp/cli-microsoft365)'s connection store
-(`~/.cli-m365-connection.json`), so `m365` can call Graph without its own sign-in:
+`xteams auth seed m365` seeds the [m365 CLI](https://github.com/pnp/cli-microsoft365)'s
+credential store from your xteams sign-in, so `m365` can call Microsoft Graph without its
+own login:
 
 ```sh
-xteams auth seed m365      # then, e.g.: m365 status  •  m365 entra user get --id <guid>
+xteams auth seed m365            # default: refresh — m365 self-renews (~90 days)
+xteams auth seed m365 -t access  # access-only — a ~1 h token; re-run before it expires
 ```
 
-The seeded token lasts about an hour and carries the Teams client's Graph scopes
-(m365 commands needing a scope Teams doesn't hold return HTTP 403). Re-run
-`xteams auth seed m365` before it expires — this path stores no refresh token for m365
-to renew from. Requires `xteams login` first.
+Select the mode with `-t`/`--token-type` (default `refresh`):
+
+- **`refresh`** (default) injects a refresh token into m365's MSAL cache, so m365 silently
+  renews Graph tokens for the token's lifetime — seed once.
+- **`access`** writes only a ~1-hour Graph access token; re-run before it expires (m365 has
+  no refresh token to renew from in this mode).
+
+The token carries the Teams client's Graph scopes (m365 commands needing a scope Teams
+doesn't hold return HTTP 403), and only Microsoft Graph is seeded. Requires `xteams login`
+first — then use m365 as usual, e.g. `m365 status` or `m365 entra user get --id <guid>`.
 
 ## How it works (short version)
 

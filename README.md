@@ -41,6 +41,12 @@ holds — the same way the app itself talks to the backend.
 
 ## Install
 
+Future `v*` tags publish platform archives to [GitHub Releases](https://github.com/boazy/xteams-cli/releases)
+with a `checksums.txt` manifest. macOS and Linux use `tar.gz`;
+Windows uses `zip`.
+
+### Build from source
+
 ```sh
 git clone <this repo>
 cd xteams-cli

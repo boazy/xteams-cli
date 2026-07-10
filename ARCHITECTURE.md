@@ -405,3 +405,16 @@ signed-in account. Test write operations against the private self-notes space
 - Routing/lock logic is testable offline without live creds: point `$XDG_STATE_HOME` at a
   temp dir with a `token-cache.json` (a bogus FRT exercises the FRT-first path and
   `invalid_grant` cleanup; a pre-seeded stale `refresh.lock` + `-j` exercises `LockHeld`).
+
+## 13. Release automation
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`. The workflow checks out the full
+history (for GoReleaser's changelog), grants `contents: write`, then uses
+`jdx/mise-action` to install the project-declared toolchain from `mise.toml` — Rust,
+Zig, `cargo-zigbuild`, and GoReleaser — before running
+`mise exec -- goreleaser release --clean` with the repository `GITHUB_TOKEN`.
+
+`.goreleaser.yaml` uses GoReleaser's Rust builder to produce `xteams` archives for
+Linux (`x86_64`, `aarch64`), macOS (`x86_64`, `aarch64`), and Windows (`x86_64`).
+Unix artifacts are `tar.gz`, Windows artifacts are `zip`, and every release includes
+`checksums.txt`.

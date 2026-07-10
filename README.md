@@ -5,10 +5,9 @@ An unofficial Microsoft Teams command-line client that talks to Teams using the
 API, no Azure/Entra app registration, no admin approval required.
 
 > ⚠️ **Unofficial & unsupported.** `xteams` uses Teams' private, undocumented HTTP
-> APIs with tokens extracted from your local install. It works only with *your own*
-> account on *your own* machine. It is not sanctioned by Microsoft, may break at any
-> time, and may conflict with your organization's acceptable-use policy. Use at your
-> own risk.
+> APIs. It works only with *your own* account and it only has the permissions you
+> have. It is not (entirely) based on the offical Graph API documented by Microsoft
+> and may break at any time, without prior warning. Use at your own risk.
 
 ## Why
 
@@ -111,7 +110,7 @@ xteams message react 'https://teams.microsoft.com/l/message/19:abc@thread.tacv2/
 
 ### Keychain prompt
 
-On first run (and after each rebuild) macOS asks permission to read the Teams
+On first run (and after each rebuild) macOS may ask permission to read the Teams
 "Safe Storage" key from your login Keychain. Click **Always Allow** to stop the
 prompt recurring.
 
@@ -158,6 +157,7 @@ Select the mode with `-t`/`--token-type` (default `refresh`):
 The token carries the Teams client's Graph scopes (m365 commands needing a scope Teams
 doesn't hold return HTTP 403), and only Microsoft Graph is seeded. Requires `xteams login`
 first — then use m365 as usual, e.g. `m365 status` or `m365 entra user get --id <guid>`.
+You don't need to use `m365 setup` or `m365 login` if you seed m365 using this method.
 
 ## How it works (short version)
 
@@ -180,6 +180,11 @@ Full technical detail: [ARCHITECTURE.md](ARCHITECTURE.md).
   `~/.local/state/xteams/token-cache.json` (the XDG state dir, owner-only `0600`) so later commands don't
   re-authenticate every time. Treat it like any other on-disk credential; `xteams logout`
   deletes it. (Cookie-only, not-logged-in usage keeps tokens in memory for the command.)
+- Due to Apple constantly breaking how application signatures work in undocumented ways
+  and making user experience miserable to open source apps not signed with Apple Develper IDs,
+  we're not using the Keychain to store the referesh token. This has negative impact on security,
+  but `xteams` is not behaving any differently from Microsoft CLI tools, which also store all their
+  tokens in file. It gives you the same level of security as Microsoft's own official CLI tools.
 - `auth seed m365` additionally writes a Graph token (and, in `refresh` mode, the refresh
   token) into the **m365 CLI's own credential store** (`~/.cli-m365-*.json`), also as
   plaintext JSON.

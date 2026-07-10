@@ -5,3 +5,8 @@ run = "cargo build"
 [tasks.install]
 description = "Build and install a release binary"
 run = "cargo install --path ."
+
+[tools]
+"aqua:rust-cross/cargo-zigbuild" = "latest"
+goreleaser = "latest"
+rust = "latest"

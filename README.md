@@ -45,6 +45,17 @@ Future `v*` tags publish platform archives to [GitHub Releases](https://github.c
 with a `checksums.txt` manifest. macOS and Linux use `tar.gz`;
 Windows uses `zip`.
 
+### Install with mise
+
+If `mise` is not installed, follow the [official mise installation instructions](https://mise.jdx.dev/getting-started.html).
+Then install the latest GitHub Release globally:
+
+```sh
+mise use -g github:boazy/xteams-cli
+```
+
+`-g` records `xteams` in mise's global configuration, making it available from any directory.
+
 ### Build from source
 
 ```sh

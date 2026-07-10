@@ -4,7 +4,8 @@ An unofficial Microsoft Teams command-line client that talks to Teams using the
 **credentials already stored by the New Teams desktop app** — no Microsoft Graph
 API, no Azure/Entra app registration, no admin approval required.
 
-> ⚠️ **Unofficial & unsupported.** `xteams` uses Teams' private, undocumented HTTP
+> [!WARNING]
+> `xteams` uses Teams' private, undocumented HTTP
 > APIs. It works only with *your own* account and it only has the permissions you
 > have. It is not (entirely) based on the offical Graph API documented by Microsoft
 > and may break at any time, without prior warning. Use at your own risk.

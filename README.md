@@ -71,7 +71,7 @@ cargo build --release
 for machine-readable output.
 
 ```
-xteams auth                                   # who am I? token status
+xteams auth                                    # who am I? token status
 xteams login                                   # device-code sign-in (unlocks team/user/calendar)
 xteams logout                                  # forget the device-code sign-in
 xteams auth seed m365                          # let the m365 CLI use your Graph token (see below)
@@ -87,7 +87,7 @@ xteams thread list <conversation> [-n N] [-a]  # threads in a conversation (top-
 xteams thread read <conversation> [root-id]    # one thread: root + replies, chronological
 xteams team list                               # teams you belong to (needs `xteams login`)
 xteams team search <query>                     # find teams by name
-xteams user search <query>                      # find people by name / email
+xteams user search <query>                     # find people by name / email
 xteams calendar list [-d DAYS]                 # upcoming calendar events (default 7 days)
 ```
 

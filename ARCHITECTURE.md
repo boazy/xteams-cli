@@ -408,8 +408,10 @@ signed-in account. Test write operations against the private self-notes space
 
 ## 13. Release automation
 
-Pushing a `v*` tag runs `.github/workflows/release.yml`. The workflow checks out the full
-history (for GoReleaser's changelog), grants `contents: write`, then uses
+Pushing a `v*` tag runs `.github/workflows/release.yml` on `macos-latest`. The macOS
+runner supplies the Xcode SDK and its `Security` / `CoreFoundation` frameworks, which are
+required when compiling the macOS cookie-credential implementation. The workflow checks
+out the full history (for GoReleaser's changelog), grants `contents: write`, then uses
 `jdx/mise-action` to install the project-declared toolchain from `mise.toml` — Rust,
 Zig, `cargo-zigbuild`, and GoReleaser — before running
 `mise exec -- goreleaser release --clean` with the repository `GITHUB_TOKEN`.

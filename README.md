@@ -67,28 +67,28 @@ cargo build --release
 
 ## Usage
 
-`xteams` uses a two-tier `<noun> <verb>` layout. Add `-j` / `--json` to any command
+`xteams` uses a two-tier `<category> <verb/subcommand>` layout. Add `-j` / `--json` to any command
 for machine-readable output.
 
 ```
-xteams auth                                    # who am I? token status
-xteams login                                   # device-code sign-in (unlocks team/user/calendar)
-xteams logout                                  # forget the device-code sign-in
-xteams auth seed m365                          # let the m365 CLI use your Graph token (see below)
-xteams chat list [-n N]                        # recent 1:1 / group chats
-xteams channel list [team]                     # channels you follow (optional name filter)
-xteams channel search <query>                  # find channels by name
-xteams message list <conversation> [-n N]      # last N messages
-xteams message read <conversation> [id]        # a single message
+xteams auth status                                # who am I? token status
+xteams auth login                                 # device-code sign-in (unlocks team/user/calendar)
+xteams auth logout                                # forget the device-code sign-in
+xteams auth seed m365                             # let the m365 CLI use your Graph token (see below)
+xteams chat list [-n N]                           # recent 1:1 / group chats
+xteams channel list [team]                        # channels you follow (optional name filter)
+xteams channel search <query>                     # find channels by name
+xteams message list <conversation> [-n N]         # last N messages
+xteams message read <conversation> [id]           # a single message
 xteams message new  <conversation> <text> [--reply-to <id>] [--html]
 xteams message edit <conversation> [id] <text> [--html]
-xteams message react <conversation> [id] <emoji>      # e.g. like, heart, laugh
-xteams thread list <conversation> [-n N] [-a]  # threads in a conversation (top-level msg each; -a adds replies)
-xteams thread read <conversation> [root-id]    # one thread: root + replies, chronological
-xteams team list                               # teams you belong to (needs `xteams login`)
-xteams team search <query>                     # find teams by name
-xteams user search <query>                     # find people by name / email
-xteams calendar list [-d DAYS]                 # upcoming calendar events (default 7 days)
+xteams message react <conversation> [id] <emoji>  # e.g. like, heart, laugh
+xteams thread list <conversation> [-n N] [-a]     # threads in a conversation (top-level msg each; -a adds replies)
+xteams thread read <conversation> [root-id]       # one thread: root + replies, chronological
+xteams team list                                  # teams you belong to (needs `xteams login`)
+xteams team search <query>                        # find teams by name
+xteams user search <query>                        # find people by name / email
+xteams calendar upcoming [-d DAYS]                # upcoming calendar events (default 7 days)
 ```
 
 `<conversation>` is a Teams conversation id — a channel (`19:...@thread.tacv2`) or a

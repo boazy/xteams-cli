@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 
 use aes::Aes128;
-use cbc::cipher::{BlockDecryptMut, KeyIvInit, block_padding::Pkcs7};
+use cbc::cipher::{BlockModeDecrypt, KeyIvInit, block_padding::Pkcs7};
 use eyre::Result;
 use security_framework::item::{ItemClass, ItemSearchOptions, SearchResult};
 use security_framework::passwords::get_generic_password;
@@ -48,7 +48,7 @@ pub fn decrypt_value(enc: &[u8], key: &CookieKey) -> Option<String> {
     let iv = [b' '; 16];
     let plain = Aes128CbcDec::new_from_slices(key, &iv)
         .ok()?
-        .decrypt_padded_vec_mut::<Pkcs7>(body)
+        .decrypt_padded_vec::<Pkcs7>(body)
         .ok()?;
     super::plaintext_to_cookie(&plain)
 }
@@ -75,4 +75,48 @@ fn keychain_secret_by_service() -> Option<Vec<u8>> {
         SearchResult::Data(data) => Some(data),
         _ => None,
     })
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use cbc::cipher::{BlockModeEncrypt, block_padding::Pkcs7};
+
+    type Aes128CbcEnc = cbc::Encryptor<Aes128>;
+
+    /// Encrypt like Chromium does: AES-128-CBC, IV = 16 spaces, PKCS7, `v10` tag.
+    fn encrypt_v10(key: &CookieKey, plain: &[u8]) -> Vec<u8> {
+        let iv = [b' '; 16];
+        let mut enc = b"v10".to_vec();
+        enc.extend(Aes128CbcEnc::new_from_slices(key, &iv).unwrap().encrypt_padded_vec::<Pkcs7>(plain));
+        enc
+    }
+
+    #[test]
+    fn decrypt_value_round_trips_v10_and_v11() {
+        let key: CookieKey = [7u8; 16];
+        let enc = encrypt_v10(&key, b"authtoken-value-123");
+        assert_eq!(decrypt_value(&enc, &key).as_deref(), Some("authtoken-value-123"));
+        // Same ciphertext under the `v11` tag decrypts identically.
+        let mut v11 = enc.clone();
+        v11[..3].copy_from_slice(b"v11");
+        assert_eq!(decrypt_value(&v11, &key).as_deref(), Some("authtoken-value-123"));
+    }
+
+    #[test]
+    fn decrypt_value_strips_m127_domain_hash() {
+        let key: CookieKey = [9u8; 16];
+        // 32-byte SHA256(host) prefix (with a control byte, as real hashes have) + cookie.
+        let mut plain = vec![0x01u8; 32];
+        plain.extend_from_slice(b"skypetoken-abc");
+        let enc = encrypt_v10(&key, &plain);
+        assert_eq!(decrypt_value(&enc, &key).as_deref(), Some("skypetoken-abc"));
+    }
+
+    #[test]
+    fn decrypt_value_rejects_unknown_prefix() {
+        let key: CookieKey = [3u8; 16];
+        assert_eq!(decrypt_value(b"v20\x00\x01raw", &key), None);
+    }
 }

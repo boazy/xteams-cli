@@ -106,10 +106,9 @@ pub fn derive_cookie_key() -> Result<CookieKey> {
 pub fn decrypt_value(enc: &[u8], key: &CookieKey) -> Option<String> {
     let body = enc.strip_prefix(b"v10").or_else(|| enc.strip_prefix(b"v11"))?;
     let (nonce, ciphertext) = body.split_at_checked(GCM_NONCE_LEN)?;
+    let nonce = Nonce::<Aes256Gcm>::try_from(nonce).ok()?;
     let cipher = Aes256Gcm::new_from_slice(key.as_slice()).ok()?;
-    let plain = cipher
-        .decrypt(Nonce::<Aes256Gcm>::from_slice(nonce), ciphertext)
-        .ok()?;
+    let plain = cipher.decrypt(&nonce, ciphertext).ok()?;
     super::plaintext_to_cookie(&plain)
 }
 

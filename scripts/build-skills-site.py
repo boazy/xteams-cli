@@ -158,7 +158,7 @@ def _landing_html(entries: list[dict]) -> str:
      <a href="{REPO_URL}">boazy/xteams-cli</a>.</p>
   <h2>Install</h2>
   <pre><code>npx skills add boazy/xteams-cli
-npx skills add https://boazy.github.io/xteams-cli/</code></pre>
+npx skills add https://boazy.me/xteams-cli/</code></pre>
   <p>Discovery manifest:
      <a href="{WELL_KNOWN}/index.json">{WELL_KNOWN}/index.json</a></p>
   <h2>Skills</h2>

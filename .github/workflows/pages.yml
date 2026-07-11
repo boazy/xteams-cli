@@ -1,7 +1,7 @@
 name: Pages
 
 # Publishes the Agent Skills discovery manifest and served SKILL.md artifacts to
-# GitHub Pages so `npx skills add https://boazy.github.io/xteams-cli/` can find
+# GitHub Pages so `npx skills add https://boazy.me/xteams-cli/` can find
 # them via /.well-known/agent-skills/index.json. Direct install
 # (`npx skills add boazy/xteams-cli`) reads skills/ straight from the repo and
 # does not need this workflow.

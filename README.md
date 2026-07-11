@@ -232,7 +232,7 @@ Install it with the [`skills`](https://skills.sh) CLI:
 npx skills add boazy/xteams-cli
 
 # Or via the published discovery endpoint (GitHub Pages)
-npx skills add https://boazy.github.io/xteams-cli/
+npx skills add https://boazy.me/xteams-cli/
 ```
 
 The skill lives in [`skills/xteams/SKILL.md`](skills/xteams/SKILL.md). The

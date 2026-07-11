@@ -51,7 +51,7 @@ xteams auth status -j
    server message id the command returns. `list`/`read`/`search` are safe to
    run freely.
 4. **`team`, `user`, and `calendar` require `xteams auth login` first.** If not
-   signed in they fail with a "run `xteams login`" error. Chat, message,
+   signed in they fail with a "run `xteams auth login`" error. Chat, message,
    thread, and channel commands work from the desktop cookies on macOS without
    login.
 5. **Discover ids, don't guess them.** Get conversation ids from `chat list` /

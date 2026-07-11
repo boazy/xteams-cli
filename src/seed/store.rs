@@ -11,7 +11,7 @@ const ALL_CONNECTIONS_FILE: &str = ".cli-m365-all-connections.json";
 const MSAL_FILE: &str = ".cli-m365-msal.json";
 
 fn home() -> Result<PathBuf, SeedError> {
-    dirs::home_dir().ok_or(SeedError::HomeDir)
+    etcetera::home_dir().map_err(|_| SeedError::HomeDir)
 }
 
 pub fn write_connection(conn: &Connection) -> Result<Vec<PathBuf>, SeedError> {

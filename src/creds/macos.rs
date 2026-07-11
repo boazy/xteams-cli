@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use aes::Aes128;
 use cbc::cipher::{BlockDecryptMut, KeyIvInit, block_padding::Pkcs7};
-use eyre::{Result, eyre};
+use eyre::Result;
 use security_framework::item::{ItemClass, ItemSearchOptions, SearchResult};
 use security_framework::passwords::get_generic_password;
 
@@ -28,7 +28,7 @@ const PBKDF2_ROUNDS: u32 = 1003;
 const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
 
 pub fn default_cookies_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| eyre!("cannot resolve home directory"))?;
+    let home = etcetera::home_dir()?;
     Ok(home.join(
         "Library/Containers/com.microsoft.teams2/Data/Library/Application Support/\
 Microsoft/MSTeams/EBWebView/WV2Profile_tfw/Cookies",

@@ -21,6 +21,7 @@ use aes_gcm::aead::{Aead, Nonce};
 use aes_gcm::{Aes256Gcm, KeyInit};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use etcetera::base_strategy::{BaseStrategy, choose_base_strategy};
 use eyre::Result;
 use serde::Deserialize;
 use windows_sys::Win32::Foundation::{HLOCAL, LocalFree};
@@ -50,8 +51,9 @@ struct OsCrypt {
 
 /// `%LOCALAPPDATA%\Packages\MSTeams_8wekyb3d8bbwe\LocalCache\Microsoft\MSTeams\EBWebView`.
 fn ebwebview_dir() -> Result<PathBuf> {
-    let local = dirs::data_local_dir()
-        .ok_or_else(|| CredsError::Windows("cannot resolve %LOCALAPPDATA%".to_owned()))?;
+    let local = choose_base_strategy()
+        .map_err(|_| CredsError::Windows("cannot resolve %LOCALAPPDATA%".to_owned()))?
+        .cache_dir();
     Ok(local
         .join("Packages")
         .join(TEAMS_PACKAGE)

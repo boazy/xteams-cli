@@ -24,6 +24,11 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub command: Command,
+
+    /// Extra pandoc arguments collected from `--pandoc-<option>` flags (populated
+    /// in `main` before clap parsing; not a user-facing clap argument).
+    #[arg(skip)]
+    pub pandoc_args: Vec<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -213,6 +218,8 @@ pub struct ThreadListArgs {
     /// Include all replies for each thread (not just the top-level message).
     #[arg(short = 'a', long)]
     pub all_replies: bool,
+    #[command(flatten)]
+    pub content: ContentOutputArgs,
 }
 
 #[derive(Debug, clap::Args)]
@@ -221,21 +228,51 @@ pub struct ThreadReadArgs {
     pub conversation: String,
     /// Root (top-level) message id (optional if a message link supplies it).
     pub message: Option<String>,
+    #[command(flatten)]
+    pub content: ContentOutputArgs,
+}
+
+/// Content options for commands that write a message body (`message new/edit`).
+/// The body comes from `--content`, or from stdin when it is omitted.
+#[derive(Debug, clap::Args)]
+pub struct ContentInputArgs {
+    /// Message content. If omitted, the content is read from stdin.
+    #[arg(long)]
+    pub content: Option<String>,
+    /// Input format for --content: markdown (default), plain, html, or
+    /// pandoc:<fmt>.
+    #[arg(short = 'I', long, value_name = "FORMAT", conflicts_with = "content_format")]
+    pub content_input_format: Option<String>,
+    /// Set both input and output content format at once (mutually exclusive with
+    /// -I/-O).
+    #[arg(short = 'f', long, value_name = "FORMAT")]
+    pub content_format: Option<String>,
+}
+
+/// Content options for commands that render a message body (`message read/list`,
+/// `thread read/list`).
+#[derive(Debug, clap::Args)]
+pub struct ContentOutputArgs {
+    /// Output format for message content: markdown (default in text mode; JSON
+    /// defaults to keep), plain, html, keep, or pandoc:<fmt>.
+    #[arg(short = 'O', long, value_name = "FORMAT", conflicts_with = "content_format")]
+    pub content_output_format: Option<String>,
+    /// Set both input and output content format at once (mutually exclusive with
+    /// -I/-O).
+    #[arg(short = 'f', long, value_name = "FORMAT")]
+    pub content_format: Option<String>,
 }
 
 #[derive(Debug, clap::Args)]
 pub struct MessageNewArgs {
     /// Conversation / channel id, or a Teams deep link.
     pub conversation: String,
-    /// Message text (plain unless --html).
-    pub text: String,
     /// Reply within the thread rooted at this message id (a message link fills
     /// this automatically).
     #[arg(long)]
     pub reply_to: Option<String>,
-    /// Treat `text` as raw RichText/Html.
-    #[arg(long)]
-    pub html: bool,
+    #[command(flatten)]
+    pub content: ContentInputArgs,
 }
 
 #[derive(Debug, clap::Args)]
@@ -245,6 +282,8 @@ pub struct MessageListArgs {
     /// Number of most-recent messages to show.
     #[arg(short = 'n', long, default_value_t = 20)]
     pub limit: u32,
+    #[command(flatten)]
+    pub content: ContentOutputArgs,
 }
 
 #[derive(Debug, clap::Args)]
@@ -253,20 +292,18 @@ pub struct MessageRefArgs {
     pub conversation: String,
     /// Message id (optional if a message link supplies it).
     pub message: Option<String>,
+    #[command(flatten)]
+    pub content: ContentOutputArgs,
 }
 
 #[derive(Debug, clap::Args)]
 pub struct MessageEditArgs {
     /// Conversation / channel id, or a Teams deep link.
     pub conversation: String,
-    /// Message id to edit (optional if a message link supplies it; then the
-    /// next argument is the new text).
+    /// Message id to edit (optional if a message link supplies it).
     pub message: Option<String>,
-    /// New text.
-    pub text: Option<String>,
-    /// Treat `text` as raw RichText/Html.
-    #[arg(long)]
-    pub html: bool,
+    #[command(flatten)]
+    pub content: ContentInputArgs,
 }
 
 #[derive(Debug, clap::Args)]

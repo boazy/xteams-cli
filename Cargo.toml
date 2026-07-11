@@ -30,6 +30,9 @@ color-eyre = "0.6.5"
 time = { version = "0.3", default-features = false, features = ["std", "formatting"] }
 uuid = { version = "1", features = ["v4"] }
 etcetera = "0.11.0"
+pulldown-cmark = "0.13.4"
+htmd = "0.5.4"
+html2text = "0.17.1"
 
 # Cookie decryption deps are platform-specific: macOS reads the Keychain key
 # (`security-framework`); Windows DPAPI-unwraps + AES-256-GCM (`windows-sys` +

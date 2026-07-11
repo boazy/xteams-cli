@@ -37,13 +37,14 @@ async fn dispatch_inner(cli: Cli) -> Result<()> {
     let cookies_owned = cli.cookies.clone();
     let cookies = cookies_owned.as_deref();
     let json = cli.json;
+    let pandoc = cli.pandoc_args.as_slice();
     match cli.command {
         Command::Auth { verb } => auth::dispatch(verb, cookies, json).await,
         Command::Chat { verb } => chat::dispatch(verb, cookies, json).await,
         Command::Team { verb } => team::dispatch(verb, json).await,
         Command::Channel { verb } => channel::dispatch(verb, cookies, json).await,
-        Command::Thread { verb } => thread::dispatch(verb, cookies, json).await,
-        Command::Message { verb } => message::dispatch(verb, cookies, json).await,
+        Command::Thread { verb } => thread::dispatch(verb, cookies, json, pandoc).await,
+        Command::Message { verb } => message::dispatch(verb, cookies, json, pandoc).await,
         Command::User { verb } => user::dispatch(verb, json).await,
         Command::Calendar { verb } => calendar::dispatch(verb, json).await,
     }

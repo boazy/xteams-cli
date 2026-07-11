@@ -65,7 +65,10 @@ return typed values; a single renderer prints human text or JSON.
 | `src/seed/store.rs` | m365 store file I/O — connection + MSAL-cache writes/merge (home-dir paths) → `SeedError`. |
 | `src/model.rs` | serde response types + result/status types. |
 | `src/output.rs` | `DisplayOutput` trait, `render(value, json)`, list/message formatting. |
-| `src/error.rs` | Typed `thiserror` errors: `CredsError`, `AuthError`, `ApiError`, `OAuthError`, `TokenStoreError`, `SeedError`. |
+| `src/content.rs` | Message-content format model (`ContentInputFormat`/`ContentOutputFormat`), `-I/-O/-f` parsing + resolution, the `to_teams_html`/`from_teams_html`/`apply_output` conversions, and `split_pandoc_args` (unit-tested). |
+| `src/content/convert.rs` | Native conversions: markdown→HTML (pulldown-cmark), HTML→markdown (htmd), HTML→text (html2text); `plain_to_html`. |
+| `src/content/pandoc.rs` | Delegated conversions via the `pandoc` binary + `--pandoc-<option>` argv splitting; rejects reserved `--from/--to/--output` (unit-tested). |
+| `src/error.rs` | Typed `thiserror` errors: `CredsError`, `AuthError`, `ApiError`, `OAuthError`, `TokenStoreError`, `SeedError`, `ContentError`. |
 | `src/commands/*.rs` | One module per noun; handlers return data values, never print. |
 | `poc/` | Throwaway Python discovery scripts (credential PoC, endpoint/audience probes). |
 
@@ -197,7 +200,7 @@ rotated) only when a token is missing/expired. `xteams logout` deletes the file.
 | List messages | `GET conversations/{conv}/messages?pageSize=N&startTime=1` | |
 | Read one message | `GET conversations/{conv}/messages/{id}` | |
 | Read a thread | `GET` messages of `{conv};messageid={rootId}` | Root + replies for one thread (`thread read`). Channel threads are addressed by appending `;messageid=<root>` to the conversation id. |
-| Post | `POST conversations/{target}/messages` | Body: `content`, `messagetype:"RichText/Html"`, `contenttype:"text"`, `imdisplayname`, `clientmessageid`. Reply → `target = {conv};messageid={root}`. |
+| Post | `POST conversations/{target}/messages` | Body: `content` (wire HTML rendered by `content`, §5.1), `messagetype:"RichText/Html"`, `contenttype:"text"`, `imdisplayname`, `clientmessageid`. Reply → `target = {conv};messageid={root}`. |
 | Edit | `PUT conversations/{conv}/messages/{id}` | Body adds `skypeeditedid:"{id}"`. |
 | React | `PUT conversations/{conv}/messages/{id}/properties?name=emotions` | Body: `{emotions:{key:<emoji>, value:<epoch-ms>}}`. |
 
@@ -210,7 +213,24 @@ rotated) only when a token is missing/expired. `xteams logout` deletes the file.
   chronologically (earliest-first), and with `-a` fetches each root's replies via the
   `;messageid=` endpoint. `thread read <root>` returns one thread (root + replies)
   sorted chronologically.
-- Plain text is HTML-escaped and `\n`→`<br>`; `--html` sends `text` verbatim.
+
+### 5.1 Content conversion (`content`)
+
+- `message new/edit` build the wire HTML from `--content` (or **stdin**, byte-for-byte,
+  when omitted) in the `-I/--content-input-format`: `markdown` (default, pulldown-cmark;
+  tables/strikethrough/task-lists), `plain` (HTML-escape + `\n`→`<br>`, wrapped in `<p>`),
+  `html` (verbatim), or `pandoc:<fmt>` (`pandoc --from <fmt> --to html`).
+- `message read/list` and `thread read/list` re-render the stored HTML per
+  `-O/--content-output-format`: `keep`/`html` (raw Teams HTML), `plain` (html2text),
+  `markdown` (htmd), or `pandoc:<fmt>` (`pandoc --from html --to <fmt>`). Default is
+  `markdown` in text mode and `keep` in `-j` JSON mode (defaults deliberately differ by
+  mode). Conversion runs in the command layer (mutating `Message.content` before
+  `render`), so an explicitly chosen `-O` format is what both JSON and human text carry.
+- `-f/--content-format` sets input and output at once (clap-exclusive with `-I`/`-O`).
+  `--pandoc-<option>` flags are split from argv in `main` (before clap) into pandoc
+  passthrough args; a value-taking long option (e.g. `metadata`) may use a space or `=`,
+  others need `=`, keeping value-less flags from eating positionals. Conversions return
+  engine output verbatim (no boundary trimming); trimming is a display concern.
 
 ## 6. Data & output
 
@@ -224,9 +244,9 @@ rotated) only when a token is missing/expired. `xteams logout` deletes the file.
     pretty) or human text.
   - `MessageList` — built via `MessageList::new`, which stores messages
     **chronologically (earliest-first, latest-last)** so JSON (`#[serde(transparent)]`,
-    full data) and human text share one order. `display_output` only *filters* empty/
-    system messages — it never reorders. (Ordering lives in the data, not the renderer,
-    so `-j` and text always agree.)
+    full data) and human text share one order. Message bodies are converted to the
+    requested `-O` format upstream (§5.1) and printed verbatim; `display_output` only
+    *filters* messages whose (converted) content is blank — it never reorders.
   - `ThreadList(Vec<Thread>)` — renders each thread's root, with replies indented
     beneath (when `-a`); transparent JSON is an array of `{ root, replies }`.
   - Blanket `impl DisplayOutput for Vec<T>`.
@@ -235,13 +255,15 @@ rotated) only when a token is missing/expired. `xteams logout` deletes the file.
 
 ## 7. Command dispatch (`commands.rs`)
 
-`main` → `commands::dispatch(cli)` → per-noun `dispatch(verb, cookies, json)`:
+`main` (after splitting `--pandoc-*` from argv) → `commands::dispatch(cli)` → per-noun
+`dispatch(verb, cookies, json)`; `message`/`thread` also receive the pandoc passthrough args:
 
 - `auth` → `AuthStatus`
 - `chat list` → `Vec<Conversation>` (channels excluded via `is_channel`)
 - `channel list [team]` / `channel search <q>` → channels derived from the
   conversation list, filtered by case-insensitive substring on topic/id
-- `message new/list/read/edit/react` → chat-service ops
+- `message new/edit` (body from `--content`/stdin, `-I` input format) / `message list/read`
+  (bodies rendered per `-O`, §5.1) / `message react` → chat-service ops
 - `thread list <conv> [-n] [-a]` → threads (roots via `list_threads`; `-a` adds each
   root's replies); `thread read <conv> <root>` → one thread chronologically
 - `login` / `logout` → device-code sign-in / clear the stored refresh token (`AuthAction`)
@@ -273,10 +295,10 @@ the conversation id (from the link, or the argument verbatim) plus the parsed fi
   (`message_ref`); a **thread root** prefers `parentMessageId`, else the path id
   (`thread_ref`, used by `thread read` and `message new --reply-to`).
 - Because a message link can supply the id, `read`/`edit`/`react`/`thread read` take
-  the message-id positional as **optional**; `edit`/`react` reinterpret their trailing
-  positional (`text`/`emoji`) accordingly. `message react`'s emoji is **mandatory**
-  (no default). `link.rs` is pure and unit-tested (the one place with tests, since it
-  needs no live backend).
+  the message-id positional as **optional**; `react` reinterprets its trailing `emoji`
+  positional (a link-supplied id shifts the emoji into the id slot). `message react`'s
+  emoji is **mandatory** (no default). `link.rs` is pure and unit-tested (needs no live
+  backend); `content` (format parsing + conversions) is unit-tested too.
 
 ## 8. Conventions / invariants
 

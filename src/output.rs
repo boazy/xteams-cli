@@ -5,6 +5,8 @@
 use eyre::Result;
 use serde::Serialize;
 
+use crate::content::html_to_preview;
+
 use crate::model::{
     AuthAction, AuthStatus, CalendarEvent, Conversation, Message, MessageAction, Person, SeedResult,
     Team, Thread, TokenInfo,
@@ -52,7 +54,7 @@ impl DisplayOutput for MessageList {
     fn display_output(&self) -> String {
         self.0
             .iter()
-            .filter(|m| !html_to_text(m.content.as_deref().unwrap_or("")).is_empty())
+            .filter(|m| !m.content.as_deref().unwrap_or("").trim().is_empty())
             .map(|m| m.display_output())
             .collect::<Vec<_>>()
             .join("\n")
@@ -88,7 +90,7 @@ impl DisplayOutput for Conversation {
             .last_message
             .as_ref()
             .and_then(|m| m.content.as_deref())
-            .map(html_to_text)
+            .map(html_to_preview)
             .unwrap_or_default()
             .chars()
             .take(60)
@@ -146,7 +148,7 @@ impl DisplayOutput for CalendarEvent {
 
 impl DisplayOutput for Message {
     fn display_output(&self) -> String {
-        let text = html_to_text(self.content.as_deref().unwrap_or(""));
+        let text = self.content.as_deref().unwrap_or("").trim();
         let who = self.im_display_name.as_deref().unwrap_or("?");
         let when = self.compose_time.as_deref().or(self.original_arrival_time.as_deref()).unwrap_or("");
         let id = self.id.as_deref().unwrap_or("");
@@ -224,27 +226,6 @@ impl DisplayOutput for SeedResult {
 
 fn indent(text: &str, prefix: &str) -> String {
     text.lines().map(|line| format!("{prefix}{line}")).collect::<Vec<_>>().join("\n")
-}
-
-fn html_to_text(html: &str) -> String {
-    let mut out = String::with_capacity(html.len());
-    let mut in_tag = false;
-    for ch in html.chars() {
-        match ch {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            other if !in_tag => out.push(other),
-            _ => {}
-        }
-    }
-    out.replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&nbsp;", " ")
-        .trim()
-        .to_owned()
 }
 
 #[cfg(test)]

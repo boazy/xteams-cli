@@ -79,12 +79,11 @@ pub async fn post_message(
     client: &ApiClient,
     conversation: &str,
     reply_to: Option<&str>,
-    text: &str,
-    html: bool,
+    content: &str,
 ) -> Result<String> {
     let target = thread_target(conversation, reply_to);
     let path = format!("conversations/{}/messages", encode(&target));
-    let request = client.chat(Method::POST, &path).json(&compose_body(client, text, html, None));
+    let request = client.chat(Method::POST, &path).json(&compose_body(client, content, None));
     let resp = client.exec(request, "POST message").await?;
     Ok(extract_message_id(resp).await)
 }
@@ -93,11 +92,11 @@ pub async fn edit_message(
     client: &ApiClient,
     conversation: &str,
     message: &str,
-    text: &str,
-    html: bool,
+    content: &str,
 ) -> Result<()> {
     let path = format!("conversations/{}/messages/{message}", encode(conversation));
-    let request = client.chat(Method::PUT, &path).json(&compose_body(client, text, html, Some(message)));
+    let request =
+        client.chat(Method::PUT, &path).json(&compose_body(client, content, Some(message)));
     client.exec(request, "PUT edit").await?;
     Ok(())
 }
@@ -121,9 +120,8 @@ fn thread_target(conversation: &str, root: Option<&str>) -> String {
     }
 }
 
-fn compose_body(client: &ApiClient, text: &str, html: bool, edit_id: Option<&str>) -> serde_json::Value {
-    let name = client.session().identity.name.clone().unwrap_or_default();
-    let content = if html { text.to_owned() } else { plain_to_html(text) };
+fn compose_body(client: &ApiClient, content: &str, edit_id: Option<&str>) -> serde_json::Value {
+    let name = client.session().identity.name.as_deref().unwrap_or_default();
     let mut body = json!({
         "content": content,
         "messagetype": "RichText/Html",
@@ -135,20 +133,6 @@ fn compose_body(client: &ApiClient, text: &str, html: bool, edit_id: Option<&str
         None => body["clientmessageid"] = json!(now_nanos()),
     }
     body
-}
-
-fn plain_to_html(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '\n' => out.push_str("<br>"),
-            other => out.push(other),
-        }
-    }
-    out
 }
 
 async fn extract_message_id(resp: reqwest::Response) -> String {

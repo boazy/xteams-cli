@@ -145,3 +145,28 @@ pub enum SeedError {
     #[error("the Graph token is missing oid/tid claims — run `xteams auth login` first")]
     NoIdentity,
 }
+
+/// Failures while converting message content between formats.
+#[derive(Debug, Error)]
+pub enum ContentError {
+    #[error("unknown content format '{0}' (expected plain, html, markdown, keep, or pandoc:<fmt>)")]
+    UnknownFormat(String),
+
+    #[error("'keep' is only valid as an output format, not an input format")]
+    KeepAsInput,
+
+    #[error("--pandoc-{0} is reserved (xteams controls the pandoc conversion direction)")]
+    ReservedPandocOption(String),
+
+    #[error("could not run pandoc (is it installed and on PATH?): {0}")]
+    PandocSpawn(#[source] std::io::Error),
+
+    #[error("pandoc ({from} -> {to}) exited with {status}: {stderr}")]
+    Pandoc { from: String, to: String, status: String, stderr: String },
+
+    #[error("HTML-to-markdown conversion failed: {0}")]
+    HtmlToMarkdown(#[source] std::io::Error),
+
+    #[error("HTML-to-text conversion failed: {0}")]
+    HtmlToText(String),
+}

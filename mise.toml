@@ -8,6 +8,7 @@ run = "cargo install --path ."
 
 [tools]
 "aqua:rust-cross/cargo-zigbuild" = "latest"
+"cargo:cargo-release" = "latest"
 goreleaser = "latest"
 rust = "latest"
 zig = "latest"

@@ -1,0 +1,56 @@
+name: Pages
+
+# Publishes the Agent Skills discovery manifest and served SKILL.md artifacts to
+# GitHub Pages so `npx skills add https://boazy.github.io/xteams-cli/` can find
+# them via /.well-known/agent-skills/index.json. Direct install
+# (`npx skills add boazy/xteams-cli`) reads skills/ straight from the repo and
+# does not need this workflow.
+#
+# One-time setup: repo Settings → Pages → Build and deployment → Source =
+# "GitHub Actions". The upload-pages-artifact step tars _site/ as-is (no Jekyll),
+# so the dotted .well-known/ directory is preserved.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "skills/**"
+      - "scripts/build-skills-site.py"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; a newer push cancels an in-flight run.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build discovery site
+        run: python3 scripts/build-skills-site.py _site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

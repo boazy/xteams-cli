@@ -20,7 +20,7 @@ cookies (v10) ── decrypt ──► authtoken (AAD)  ──authz──►  sk
 
 **Two entry paths, unified into one `Session`:**
 
-1. **FRT-first (`xteams login`)** — when a FOCI family refresh token (FRT) is cached on
+1. **FRT-first (`xteams auth login`)** — when a FOCI family refresh token (FRT) is cached on
    disk, mint an `api.spaces.skype.com` token and POST it to `authz` to derive the
    skypetoken + regional service map. **No cookies, no Teams app** required (world 2).
 2. **Cookie fallback** — otherwise **creds** reads the Chromium `Cookies` SQLite from the
@@ -130,7 +130,7 @@ submodule chosen by `#[cfg]`:
 
 ### FRT / FOCI token path (`auth/`) — primary, persistent
 
-`xteams login` runs an OAuth 2.0 **device-code** grant against the Teams **FOCI** public
+`xteams auth login` runs an OAuth 2.0 **device-code** grant against the Teams **FOCI** public
 client `1fec8e78-bce4-4aaf-ab1b-5451cc387264` (`auth/device_code.rs`: prints the code on
 **stderr**, polls `…/oauth2/v2.0/token`). The resulting **family refresh token (FRT)** can
 mint a token for *any* audience — including `api.spaces.skype.com`, which drives the chat
@@ -142,7 +142,7 @@ JSON file in the XDG **state** dir via `etcetera` (`~/.local/state/xteams/token-
 holding the FRT, every per-audience access token (with absolute expiry), the derived skype
 session (skypetoken + region + `regionGtms` + expiry), and identity. A valid cached token
 is used directly with **no network and no FRT refresh**; the FRT is redeemed (and possibly
-rotated) only when a token is missing/expired. `xteams logout` deletes the file.
+rotated) only when a token is missing/expired. `xteams auth logout` deletes the file.
 
 - **`Authenticator`** (`auth/authenticator.rs`) is disk-backed. `token_for(resource)`:
   read cache lock-free → if valid, return; else acquire the cache lock, **reload +
@@ -266,16 +266,16 @@ rotated) only when a token is missing/expired. `xteams logout` deletes the file.
   (bodies rendered per `-O`, §5.1) / `message react` → chat-service ops
 - `thread list <conv> [-n] [-a]` → threads (roots via `list_threads`; `-a` adds each
   root's replies); `thread read <conv> <root>` → one thread chronologically
-- `login` / `logout` → device-code sign-in / clear the stored refresh token (`AuthAction`)
+- `auth login` / `auth logout` → device-code sign-in / clear the stored refresh token (`AuthAction`)
 - `auth seed m365 [-t refresh|access]` → seed the m365 CLI (default `refresh` injects the FOCI RT for silent renewal; `access` writes only a ~1 h token) (`SeedResult`); see §10
 - `team list` / `team search <q>` → teams via CSA (`Vec<Team>`); `team join` still
   deferred (a write op; endpoint unverified)
 - `user search <q>` → people via substrate (`Vec<Person>`)
-- `calendar list [-d days]` → upcoming Graph events (`Vec<CalendarEvent>`)
+- `calendar upcoming [-d days]` → upcoming Graph events (`Vec<CalendarEvent>`)
 
 The bearer commands (`team`/`user`/`calendar`) take `(verb, json)` — no cookies — and
 build an `Authenticator` from the stored refresh token, erroring with
-`OAuthError::NotLoggedIn` ("run `xteams login`") if absent.
+`OAuthError::NotLoggedIn` ("run `xteams auth login`") if absent.
 
 ### Deep-link resolution (`link.rs`)
 
@@ -320,13 +320,13 @@ Features needing other audiences now obtain them via the device-code/FOCI path
 | Teams / channel roster | `team list` / `team search` | `teams.microsoft.com/api/csa/<region>` — `chatsvcagg.teams.microsoft.com` | ✅ |
 | Team join | `team join` | (CSA join endpoint) | ⏳ deferred — write op, endpoint unverified |
 | People search | `user search` | `substrate.office.com/search/api/v1/suggestions` — `substrate.office.com` | ✅ |
-| Calendar | `calendar list` | `graph.microsoft.com/v1.0/me/calendarView` — `graph.microsoft.com` (`Calendars.ReadWrite`) | ✅ |
+| Calendar | `calendar upcoming` | `graph.microsoft.com/v1.0/me/calendarView` — `graph.microsoft.com` (`Calendars.ReadWrite`) | ✅ |
 
 Token / audience matrix:
 
 | Token | Source | Audience(s) | Unlocks |
 |-------|--------|-------------|---------|
-| FOCI **family refresh token** | `xteams login` (device-code); cached in `token-cache.json` | any, redeemed per-audience | chatsvcagg, substrate, graph, **spaces → authz → skypetoken** |
+| FOCI **family refresh token** | `xteams auth login` (device-code); cached in `token-cache.json` | any, redeemed per-audience | chatsvcagg, substrate, graph, **spaces → authz → skypetoken** |
 | `skypetoken` (+ region + gtms) | `authz` (FRT spaces token, else cookie AAD); cached | Skype/IC3 | chat service |
 | `authtoken` (AAD) | cookie fallback only | `api.spaces.skype.com` | `authz` |
 
@@ -421,7 +421,7 @@ There is **no mock backend** — QA is done by running the binary against a real
 signed-in account. Test write operations against the private self-notes space
 (`48:notes`), which is not visible to anyone else.
 
-- Signed-in (FRT) runs use `~/.local/state/xteams/token-cache.json`; `xteams logout` (or
+- Signed-in (FRT) runs use `~/.local/state/xteams/token-cache.json`; `xteams auth logout` (or
   deleting that file) resets to a clean state, and the cookie fallback needs a signed-in
   New Teams.
 - Routing/lock logic is testable offline without live creds: point `$XDG_STATE_HOME` at a

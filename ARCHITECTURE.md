@@ -68,6 +68,8 @@ return typed values; a single renderer prints human text or JSON.
 | `src/content.rs` | Message-content format model (`ContentInputFormat`/`ContentOutputFormat`), `-I/-O/-f` parsing + resolution, the `to_teams_html`/`from_teams_html`/`apply_output` conversions, and `split_pandoc_args` (unit-tested). |
 | `src/content/convert.rs` | Native conversions: markdown→HTML (pulldown-cmark), HTML→markdown (htmd), HTML→text (html2text); `plain_to_html`. |
 | `src/content/pandoc.rs` | Delegated conversions via the `pandoc` binary + `--pandoc-<option>` argv splitting; rejects reserved `--from/--to/--output` (unit-tested). |
+| `src/content/mentions.rs` | `@{…}` mention tokens: quote-aware HTML token parse (`parse`/`MentionDoc::assemble`) and the `Mention` wire entries — see §5.2 (unit-tested). |
+| `src/content/mentions/pick.rs` | Deterministic candidate selection for mention queries: `pick_person` (substrate results), `pick_channel` (conversation-list topics) — never "first result" (unit-tested). |
 | `src/error.rs` | Typed `thiserror` errors: `CredsError`, `AuthError`, `ApiError`, `OAuthError`, `TokenStoreError`, `SeedError`, `ContentError`. |
 | `src/commands/*.rs` | One module per noun; handlers return data values, never print. |
 | `poc/` | Throwaway Python discovery scripts (credential PoC, endpoint/audience probes). |
@@ -200,8 +202,8 @@ rotated) only when a token is missing/expired. `xteams auth logout` deletes the 
 | List messages | `GET conversations/{conv}/messages?pageSize=N&startTime=1` | |
 | Read one message | `GET conversations/{conv}/messages/{id}` | |
 | Read a thread | `GET` messages of `{conv};messageid={rootId}` | Root + replies for one thread (`thread read`). Channel threads are addressed by appending `;messageid=<root>` to the conversation id. |
-| Post | `POST conversations/{target}/messages` | Body: `content` (wire HTML rendered by `content`, §5.1), `messagetype:"RichText/Html"`, `contenttype:"text"`, `imdisplayname`, `clientmessageid`. Reply → `target = {conv};messageid={root}`. |
-| Edit | `PUT conversations/{conv}/messages/{id}` | Body adds `skypeeditedid:"{id}"`. |
+| Post | `POST conversations/{target}/messages` | Body: `content` (wire HTML rendered by `content`, §5.1), `messagetype:"RichText/Html"`, `contenttype:"text"`, `imdisplayname`, `clientmessageid`; mentions add `properties.mentions` (§5.2). Reply → `target = {conv};messageid={root}`. |
+| Edit | `PUT conversations/{conv}/messages/{id}` | Body adds `skypeeditedid:"{id}"`. `properties` is **replaced**, not merged (verified live): omitting `properties.mentions` on an edit clears any previous mentions. |
 | React | `PUT conversations/{conv}/messages/{id}/properties?name=emotions` | Body: `{emotions:{key:<emoji>, value:<epoch-ms>}}`. |
 
 - **Server message id**: on POST, read from the `Location` response header (last path
@@ -231,6 +233,57 @@ rotated) only when a token is missing/expired. `xteams auth logout` deletes the 
   passthrough args; a value-taking long option (e.g. `metadata`) may use a space or `=`,
   others need `=`, keeping value-less flags from eating positionals. Conversions return
   engine output verbatim (no boundary trimming); trimming is a display concern.
+
+### 5.2 Mentions (`content/mentions`)
+
+A mention only notifies when the wire body carries **two synchronized parts**
+(name-only HTML does nothing):
+
+1. `content` HTML:
+   `<span itemtype="http://schema.skype.com/Mention" itemscope="" itemid="N">Name</span>`
+2. `properties.mentions` — a JSON array **encoded as a string**, entries
+   `{"@type":"http://schema.skype.com/Mention","itemid":N,"mri":"<mri>","mentionType":"<type>","displayName":"Name"}`,
+   `itemid` matching the span (0-based, document order).
+
+Verified live (client-authored messages + post/edit round-trips) for two
+shapes, the only ones emitted:
+
+| `mentionType` | `mri` | Notes |
+|---------------|-------|-------|
+| `person` | `8:orgid:<oid>` (kind `8:`) | |
+| `channel` | the channel's own thread id, `19:…@thread.tacv2` | The mentioned channel's id — not the conversation being posted to. |
+
+**Team mentions remain deferred** (no observed sample; a `19:` id alone cannot
+distinguish a team from a channel, so nothing is guessed).
+
+Users write `@{…}` tokens in the message body (any `-I` input format — the
+token is plain text and survives every conversion). After `to_teams_html`,
+`mentions::parse` splits the HTML into literal pieces + `MentionSpec`s: tags are
+copied verbatim with a quote-aware scanner (a `>` inside a quoted attribute
+doesn't end the tag), text inside `<code>`/`<pre>` stays literal, and `@@{`
+escapes a literal `@{`. Token forms:
+
+- `@{query}` — person, resolved in `commands/message.rs` via substrate people
+  search (needs `xteams auth login`; cookie-only sessions get a clear error).
+  Deterministic pick (`mentions::pick_person`): a single candidate wins; among
+  several, a unique exact display-name/email match wins; otherwise error with
+  the candidate MRIs — never "first result".
+- `@{#name}` — channel, matched against the chat-service **conversation list**
+  (the channels you follow — the same source as `channel list`; works in every
+  auth world). CSA `users/me/updates` was tried and rejected: it returns only a
+  partial roster (General-only per team). `mentions::pick_channel` requires a
+  **unique exact** (case-insensitive) topic match; a substring never
+  auto-selects (duplicate names like "General" are common) — near-misses are
+  reported as candidates with MRIs.
+- `@{<mri>|<Display Name>}` — explicit person (`8:…`) or channel
+  (`19:…@thread.tacv2`) MRI, no lookup, works in every auth world; the
+  `mentionType` is derived from the MRI kind.
+
+`MentionDoc::assemble` re-emits the HTML with the spans and returns the
+`Mention` entries; `api/chat.rs::compose_body` attaches them (JSON-encoded
+string) as `properties.mentions` on POST/PUT when non-empty. `parse`/`assemble`
+(`mentions.rs`) and `pick_person`/`pick_channel` (`mentions/pick.rs`) are pure
+and unit-tested.
 
 ## 6. Data & output
 

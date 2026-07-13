@@ -143,6 +143,19 @@ Bodies are converted to/from the HTML Teams stores on the wire.
 - `-f/--content-format` sets input and output at once (mutually exclusive with
   `-I`/`-O`). Extra pandoc flags: `--pandoc-standalone`,
   `--pandoc-metadata title=Doc`, etc.
+- **Mentions** (`message new`/`edit`, any input format): write `@{…}` tokens in
+  the body; xteams emits the mention HTML *and* the `properties.mentions`
+  metadata Teams needs to highlight and notify.
+  - `@{name or email}` — a person, resolved via people search (needs `xteams
+    auth login`); ambiguous queries error and list candidates with their MRIs.
+  - `@{#channel name}` — a channel you follow (same source as `channel list`;
+    no login needed); the topic must match exactly (case-insensitive) and
+    uniquely.
+  - `@{<mri>|<Display Name>}` — explicit MRI, no lookup, works without login:
+    person `8:orgid:…` (from `xteams -j user search` `.[].MRI`) or channel
+    `19:…@thread.tacv2` (from `xteams -j channel list` `.[].id`).
+  - `@@{` escapes a literal `@{`; tokens in code spans/blocks stay literal.
+  - Example: `xteams message new "$CONV" --content 'ping @{Ada Lovelace}, PTAL'`
 
 ## Deep links
 

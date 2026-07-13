@@ -236,12 +236,19 @@ pub struct ThreadReadArgs {
 /// The body comes from `--content`, or from stdin when it is omitted.
 #[derive(Debug, clap::Args)]
 pub struct ContentInputArgs {
-    /// Message content. If omitted, the content is read from stdin.
+    /// Message content. If omitted, the content is read from stdin. @-mention
+    /// with @{name or email} (person; needs auth login), @{#channel name}
+    /// (channel you follow), or @{<mri>|<Display Name>}; @@{ is a literal @{.
     #[arg(long)]
     pub content: Option<String>,
     /// Input format for --content: markdown (default), plain, html, or
     /// pandoc:<fmt>.
-    #[arg(short = 'I', long, value_name = "FORMAT", conflicts_with = "content_format")]
+    #[arg(
+        short = 'I',
+        long,
+        value_name = "FORMAT",
+        conflicts_with = "content_format"
+    )]
     pub content_input_format: Option<String>,
     /// Set both input and output content format at once (mutually exclusive with
     /// -I/-O).
@@ -255,7 +262,12 @@ pub struct ContentInputArgs {
 pub struct ContentOutputArgs {
     /// Output format for message content: markdown (default in text mode; JSON
     /// defaults to keep), plain, html, keep, or pandoc:<fmt>.
-    #[arg(short = 'O', long, value_name = "FORMAT", conflicts_with = "content_format")]
+    #[arg(
+        short = 'O',
+        long,
+        value_name = "FORMAT",
+        conflicts_with = "content_format"
+    )]
     pub content_output_format: Option<String>,
     /// Set both input and output content format at once (mutually exclusive with
     /// -I/-O).

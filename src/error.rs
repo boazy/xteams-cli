@@ -45,10 +45,11 @@ pub enum AuthError {
     #[error("Teams authz endpoint returned HTTP {status}: {body}")]
     Authz { status: u16, body: String },
 
-    #[error(
-        "Teams authz rejected the cached credential {credential:?} (HTTP 401): {body}"
-    )]
-    AuthzUnauthorized { credential: CachedCredential, body: String },
+    #[error("Teams authz rejected the cached credential {credential:?} (HTTP 401): {body}")]
+    AuthzUnauthorized {
+        credential: CachedCredential,
+        body: String,
+    },
 
     #[error("authz response did not include a skype token")]
     NoSkypeToken,
@@ -93,7 +94,11 @@ pub enum OAuthError {
     Timeout,
 
     #[error("token endpoint returned HTTP {status}: {error}: {description}")]
-    TokenEndpoint { status: u16, error: String, description: String },
+    TokenEndpoint {
+        status: u16,
+        error: String,
+        description: String,
+    },
 
     #[error("token response was missing the '{0}' field")]
     MissingField(&'static str),
@@ -117,14 +122,20 @@ pub enum TokenStoreError {
     #[error("failed to write the token cache at {path}: {detail}")]
     Write { path: String, detail: String },
 
-    #[error("the token cache at {path} is corrupt ({detail}) — run `xteams auth login` to rebuild it")]
+    #[error(
+        "the token cache at {path} is corrupt ({detail}) — run `xteams auth login` to rebuild it"
+    )]
     Corrupt { path: String, detail: String },
 
     #[error(
         "another xteams process is refreshing credentials\n\
          (lock {path} held since {since}, {age}); re-run once it finishes, or delete the lock"
     )]
-    LockHeld { path: String, since: String, age: String },
+    LockHeld {
+        path: String,
+        since: String,
+        age: String,
+    },
 
     #[error("could not manage the refresh lock at {path}: {detail}")]
     Lock { path: String, detail: String },
@@ -162,11 +173,33 @@ pub enum ContentError {
     PandocSpawn(#[source] std::io::Error),
 
     #[error("pandoc ({from} -> {to}) exited with {status}: {stderr}")]
-    Pandoc { from: String, to: String, status: String, stderr: String },
+    Pandoc {
+        from: String,
+        to: String,
+        status: String,
+        stderr: String,
+    },
 
     #[error("HTML-to-markdown conversion failed: {0}")]
     HtmlToMarkdown(#[source] std::io::Error),
 
     #[error("HTML-to-text conversion failed: {0}")]
     HtmlToText(String),
+
+    #[error("unterminated @{{…}} mention token (escape a literal one as @@{{)")]
+    UnterminatedMention,
+
+    #[error("empty @{{…}} mention token")]
+    EmptyMention,
+
+    #[error(
+        "'{0}' is not a mentionable MRI (person 8:…, e.g. 8:orgid:<oid>; channel 19:…@thread.tacv2)"
+    )]
+    BadMentionMri(String),
+
+    #[error("no match for @{{{0}}}")]
+    MentionNotFound(String),
+
+    #[error("@{{{query}}} is ambiguous; use @{{<mri>|<name>}}. Candidates: {candidates}")]
+    MentionAmbiguous { query: String, candidates: String },
 }

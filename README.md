@@ -132,6 +132,32 @@ xteams message new 19:abc@thread.tacv2 --content "<p><b>Bold Text</b></p>" -I ht
 echo "**Bold Text**" | xteams message new 19:abc@thread.tacv2 # stdin
 ```
 
+### Mentions
+
+Write `@{…}` tokens anywhere in the body (any input format) to @-mention
+people or channels — xteams generates both the mention HTML and the
+`properties.mentions` metadata Teams needs for the mention to highlight and
+notify:
+
+- `@{name or email}` — a person, resolved via people search (requires `xteams
+  auth login`). If several people match, the unique exact display-name/email
+  match wins; otherwise xteams errors listing the candidates and their MRIs.
+- `@{#channel name}` — a channel, matched against the channels you follow
+  (same source as `channel list`; no `auth login` needed). The name must match
+  a channel topic exactly (case-insensitive) and uniquely; near-misses are
+  listed as candidates with their ids.
+- `@{<mri>|<Display Name>}` — explicit MRI, no lookup needed; works without
+  `auth login`. Person MRIs look like `8:orgid:<aad-object-id>` (from `xteams
+  user search`), channel MRIs are the channel's id, `19:…@thread.tacv2` (from
+  `xteams channel list`).
+- `@@{` escapes a literal `@{`; tokens inside code spans/blocks stay literal.
+
+```sh
+xteams message new 19:abc@thread.tacv2 --content 'ping @{Ada Lovelace}, PTAL'
+xteams message new 19:abc@thread.tacv2 --content 'moved to @{#Proto Mapping}'
+xteams message new 19:abc@thread.tacv2 --content 'ping @{8:orgid:11111111-2222-3333-4444-555555555555|Ada}'
+```
+
 `message read`/`list` and `thread read`/`list` render the stored HTML with
 `-O/--content-output-format` (default `markdown` in text mode, `keep` in `-j`
 JSON mode so the raw Teams HTML survives): `keep`, `plain`, `html`, `markdown`,

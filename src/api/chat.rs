@@ -5,6 +5,7 @@ use reqwest::Method;
 use serde_json::json;
 
 use super::ApiClient;
+use crate::content::mentions::Mention;
 use crate::model::{Conversation, ConversationsResponse, Message, MessagesResponse, Thread};
 
 pub async fn list_conversations(client: &ApiClient, limit: u32) -> Result<Vec<Conversation>> {
@@ -18,7 +19,11 @@ pub async fn list_conversations(client: &ApiClient, limit: u32) -> Result<Vec<Co
     Ok(resp.json::<ConversationsResponse>().await?.conversations)
 }
 
-pub async fn get_messages(client: &ApiClient, conversation: &str, limit: u32) -> Result<Vec<Message>> {
+pub async fn get_messages(
+    client: &ApiClient,
+    conversation: &str,
+    limit: u32,
+) -> Result<Vec<Message>> {
     let limit = limit.to_string();
     let path = format!("conversations/{}/messages", encode(conversation));
     let request = client
@@ -28,7 +33,12 @@ pub async fn get_messages(client: &ApiClient, conversation: &str, limit: u32) ->
     Ok(resp.json::<MessagesResponse>().await?.messages)
 }
 
-pub async fn get_thread(client: &ApiClient, conversation: &str, root: &str, limit: u32) -> Result<Vec<Message>> {
+pub async fn get_thread(
+    client: &ApiClient,
+    conversation: &str,
+    root: &str,
+    limit: u32,
+) -> Result<Vec<Message>> {
     get_messages(client, &thread_target(conversation, Some(root)), limit).await
 }
 
@@ -65,7 +75,11 @@ pub async fn list_threads(
     Ok(threads)
 }
 
-async fn reply_messages(client: &ApiClient, conversation: &str, root: &Message) -> Result<Vec<Message>> {
+async fn reply_messages(
+    client: &ApiClient,
+    conversation: &str,
+    root: &Message,
+) -> Result<Vec<Message>> {
     let Some(root_id) = root.id.as_deref() else {
         return Ok(Vec::new());
     };
@@ -80,10 +94,12 @@ pub async fn post_message(
     conversation: &str,
     reply_to: Option<&str>,
     content: &str,
+    mentions: &[Mention],
 ) -> Result<String> {
     let target = thread_target(conversation, reply_to);
     let path = format!("conversations/{}/messages", encode(&target));
-    let request = client.chat(Method::POST, &path).json(&compose_body(client, content, None));
+    let body = compose_body(client, content, None, mentions)?;
+    let request = client.chat(Method::POST, &path).json(&body);
     let resp = client.exec(request, "POST message").await?;
     Ok(extract_message_id(resp).await)
 }
@@ -93,18 +109,30 @@ pub async fn edit_message(
     conversation: &str,
     message: &str,
     content: &str,
+    mentions: &[Mention],
 ) -> Result<()> {
     let path = format!("conversations/{}/messages/{message}", encode(conversation));
-    let request =
-        client.chat(Method::PUT, &path).json(&compose_body(client, content, Some(message)));
+    let body = compose_body(client, content, Some(message), mentions)?;
+    let request = client.chat(Method::PUT, &path).json(&body);
     client.exec(request, "PUT edit").await?;
     Ok(())
 }
 
-pub async fn add_reaction(client: &ApiClient, conversation: &str, message: &str, emoji: &str) -> Result<()> {
-    let path = format!("conversations/{}/messages/{message}/properties", encode(conversation));
+pub async fn add_reaction(
+    client: &ApiClient,
+    conversation: &str,
+    message: &str,
+    emoji: &str,
+) -> Result<()> {
+    let path = format!(
+        "conversations/{}/messages/{message}/properties",
+        encode(conversation)
+    );
     let body = json!({ "emotions": { "key": emoji, "value": now_millis() } });
-    let request = client.chat(Method::PUT, &path).query(&[("name", "emotions")]).json(&body);
+    let request = client
+        .chat(Method::PUT, &path)
+        .query(&[("name", "emotions")])
+        .json(&body);
     client.exec(request, "PUT reaction").await?;
     Ok(())
 }
@@ -120,19 +148,35 @@ fn thread_target(conversation: &str, root: Option<&str>) -> String {
     }
 }
 
-fn compose_body(client: &ApiClient, content: &str, edit_id: Option<&str>) -> serde_json::Value {
-    let name = client.session().identity.name.as_deref().unwrap_or_default();
+/// Build the POST/PUT message body. Mentions ride in `properties.mentions`,
+/// JSON-encoded *as a string* (the wire format the Teams client itself sends);
+/// the `content` HTML must carry the matching `itemid` spans.
+fn compose_body(
+    client: &ApiClient,
+    content: &str,
+    edit_id: Option<&str>,
+    mentions: &[Mention],
+) -> Result<serde_json::Value> {
+    let name = client
+        .session()
+        .identity
+        .name
+        .as_deref()
+        .unwrap_or_default();
     let mut body = json!({
         "content": content,
         "messagetype": "RichText/Html",
         "contenttype": "text",
         "imdisplayname": name,
     });
+    if !mentions.is_empty() {
+        body["properties"] = json!({ "mentions": serde_json::to_string(mentions)? });
+    }
     match edit_id {
         Some(id) => body["skypeeditedid"] = json!(id),
         None => body["clientmessageid"] = json!(now_nanos()),
     }
-    body
+    Ok(body)
 }
 
 async fn extract_message_id(resp: reqwest::Response) -> String {

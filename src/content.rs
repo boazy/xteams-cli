@@ -3,6 +3,7 @@
 //! Markdown, and arbitrary pandoc formats.
 
 mod convert;
+pub mod mentions;
 mod pandoc;
 
 pub use convert::html_to_preview;
@@ -144,8 +145,14 @@ mod tests {
 
     #[test]
     fn parses_input_formats() {
-        assert_eq!(ContentInputFormat::parse("plain").unwrap(), ContentInputFormat::Plain);
-        assert_eq!(ContentInputFormat::parse("md").unwrap(), ContentInputFormat::Markdown);
+        assert_eq!(
+            ContentInputFormat::parse("plain").unwrap(),
+            ContentInputFormat::Plain
+        );
+        assert_eq!(
+            ContentInputFormat::parse("md").unwrap(),
+            ContentInputFormat::Markdown
+        );
         assert_eq!(
             ContentInputFormat::parse("pandoc:rst").unwrap(),
             ContentInputFormat::Pandoc("rst".to_owned())
@@ -167,14 +174,23 @@ mod tests {
     #[test]
     fn resolves_format_defaults() {
         // Input defaults to markdown; -f overrides -I's absence.
-        assert_eq!(resolve_input(None, None).unwrap(), ContentInputFormat::Markdown);
+        assert_eq!(
+            resolve_input(None, None).unwrap(),
+            ContentInputFormat::Markdown
+        );
         assert_eq!(
             resolve_input(None, Some("html".to_owned())).unwrap(),
             ContentInputFormat::Html
         );
         // Output defaults: keep in JSON mode, markdown in human mode.
-        assert_eq!(resolve_output(None, None, true).unwrap(), ContentOutputFormat::Keep);
-        assert_eq!(resolve_output(None, None, false).unwrap(), ContentOutputFormat::Markdown);
+        assert_eq!(
+            resolve_output(None, None, true).unwrap(),
+            ContentOutputFormat::Keep
+        );
+        assert_eq!(
+            resolve_output(None, None, false).unwrap(),
+            ContentOutputFormat::Markdown
+        );
         assert_eq!(
             resolve_output(Some("plain".to_owned()), None, true).unwrap(),
             ContentOutputFormat::Plain
@@ -185,7 +201,10 @@ mod tests {
     fn markdown_wraps_paragraphs_and_bold() {
         let html = convert::markdown_to_html("**Bold Text**");
         assert!(html.contains("<p>"), "expected paragraph wrapping: {html}");
-        assert!(html.contains("<strong>Bold Text</strong>"), "expected bold: {html}");
+        assert!(
+            html.contains("<strong>Bold Text</strong>"),
+            "expected bold: {html}"
+        );
     }
 
     #[test]
@@ -200,7 +219,10 @@ mod tests {
         assert!(!text.contains("onetwo"), "block boundary lost: {text:?}");
         let one = text.find("one").expect("one present");
         let two = text.find("two").expect("two present");
-        assert!(text[one..two].contains('\n'), "expected newline between blocks: {text:?}");
+        assert!(
+            text[one..two].contains('\n'),
+            "expected newline between blocks: {text:?}"
+        );
     }
 
     #[test]
@@ -229,7 +251,12 @@ mod tests {
         assert_eq!(filtered, strs(&["xteams", "message", "new", "19:conv"]));
         assert_eq!(
             pandoc,
-            strs(&["--standalone", "--css=water.css", "--metadata", "title=Documentation"])
+            strs(&[
+                "--standalone",
+                "--css=water.css",
+                "--metadata",
+                "title=Documentation"
+            ])
         );
     }
 
@@ -237,8 +264,13 @@ mod tests {
     fn switch_before_positional_is_not_consumed() {
         // `standalone` is a switch (not a value option), so the following
         // positional stays in the clap argv.
-        let (filtered, pandoc) =
-            split_pandoc_args(strs(&["xteams", "message", "list", "--pandoc-standalone", "19:conv"]));
+        let (filtered, pandoc) = split_pandoc_args(strs(&[
+            "xteams",
+            "message",
+            "list",
+            "--pandoc-standalone",
+            "19:conv",
+        ]));
         assert_eq!(filtered, strs(&["xteams", "message", "list", "19:conv"]));
         assert_eq!(pandoc, strs(&["--standalone"]));
     }

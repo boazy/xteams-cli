@@ -1,6 +1,6 @@
 [package]
 name = "xteams-cli"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 description = "Unofficial Microsoft Teams CLI that does not require an Azure App"
 license = "MIT"

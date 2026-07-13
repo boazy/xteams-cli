@@ -81,11 +81,17 @@ impl TeamsDeepLinkFields {
     /// Id to use when the target is a thread root: prefer `parentMessageId`,
     /// otherwise fall back to the path message id.
     pub fn thread_ref(&self) -> Option<&str> {
-        self.parent_message_id.as_deref().or(self.message_id.as_deref())
+        self.parent_message_id
+            .as_deref()
+            .or(self.message_id.as_deref())
     }
 }
 
-const HOSTS: [&str; 3] = ["teams.microsoft.com", "teams.cloud.microsoft", "teams.live.com"];
+const HOSTS: [&str; 3] = [
+    "teams.microsoft.com",
+    "teams.cloud.microsoft",
+    "teams.live.com",
+];
 
 /// Parse a Teams deep link. Returns `None` when `input` is not a Teams `/l/…`
 /// link (e.g. a raw conversation id), so callers fall back to treating the
@@ -159,7 +165,9 @@ pub fn resolve_conversation(arg: String) -> (String, Option<TeamsDeepLinkFields>
 }
 
 fn decode(raw: &str) -> String {
-    urlencoding::decode(raw).map(|cow| cow.into_owned()).unwrap_or_else(|_| raw.to_owned())
+    urlencoding::decode(raw)
+        .map(|cow| cow.into_owned())
+        .unwrap_or_else(|_| raw.to_owned())
 }
 
 #[cfg(test)]
@@ -177,8 +185,14 @@ mod tests {
             Some("19:3SowqPWva8jvnD7ub4v_oAq-Cawno4p66eWXJ9_IXzo1@thread.tacv2")
         );
         assert_eq!(fields.message_id, None);
-        assert_eq!(fields.group_id.as_deref(), Some("b7dc1df1-ba01-40af-b54c-fb4b8a43c8d4"));
-        assert_eq!(fields.tenant_id.as_deref(), Some("af559f8b-54dc-49fe-8006-3cc5f2201ef3"));
+        assert_eq!(
+            fields.group_id.as_deref(),
+            Some("b7dc1df1-ba01-40af-b54c-fb4b8a43c8d4")
+        );
+        assert_eq!(
+            fields.tenant_id.as_deref(),
+            Some("af559f8b-54dc-49fe-8006-3cc5f2201ef3")
+        );
     }
 
     #[test]
@@ -260,7 +274,10 @@ mod tests {
     fn msteams_protocol_v1() {
         let url = "msteams:/l/message/19:abc@thread.tacv2/123?parentMessageId=99";
         let fields = extract_teams_link_data(url).unwrap();
-        assert_eq!(fields.conversation_id.as_deref(), Some("19:abc@thread.tacv2"));
+        assert_eq!(
+            fields.conversation_id.as_deref(),
+            Some("19:abc@thread.tacv2")
+        );
         assert_eq!(fields.message_id.as_deref(), Some("123"));
         assert_eq!(fields.thread_ref(), Some("99"));
     }

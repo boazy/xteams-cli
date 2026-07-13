@@ -18,21 +18,37 @@ const DEVICE_CODE_AUDIENCES: [(&str, &str); 3] = [
 pub async fn dispatch(verb: AuthVerb, cookies: Option<&Path>, json: bool) -> Result<()> {
     let interaction = AuthInteraction::from_json(json);
     match verb {
-        AuthVerb::Status(args) => {
-            render(&status(cookies, args.include_tokens, interaction).await?, json)
-        }
+        AuthVerb::Status(args) => render(
+            &status(cookies, args.include_tokens, interaction).await?,
+            json,
+        ),
         AuthVerb::Login => {
             auth::login_authenticator(interaction).await?;
-            render(&AuthAction { action: "login", signed_in: true }, json)
+            render(
+                &AuthAction {
+                    action: "login",
+                    signed_in: true,
+                },
+                json,
+            )
         }
         AuthVerb::Logout => {
             auth::logout()?;
-            render(&AuthAction { action: "logout", signed_in: false }, json)
+            render(
+                &AuthAction {
+                    action: "logout",
+                    signed_in: false,
+                },
+                json,
+            )
         }
         AuthVerb::Seed { target } => match target {
             SeedTarget::M365(args) => {
                 let authenticator = auth::load_authenticator(interaction)?;
-                render(&crate::seed::seed_m365(args.token_type, &authenticator).await?, json)
+                render(
+                    &crate::seed::seed_m365(args.token_type, &authenticator).await?,
+                    json,
+                )
             }
         },
     }

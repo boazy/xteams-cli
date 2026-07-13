@@ -17,7 +17,9 @@ pub enum CachedCredential {
 
 impl CachedCredential {
     pub fn access(resource: impl Into<String>) -> Self {
-        Self::AccessToken { resource: resource.into() }
+        Self::AccessToken {
+            resource: resource.into(),
+        }
     }
 }
 
@@ -80,7 +82,10 @@ mod tests {
         })
         .wrap_err("while listing chats")
         .expect_err("must be an error");
-        assert_eq!(credential_to_invalidate(&report), Some(CachedCredential::SkypeSession));
+        assert_eq!(
+            credential_to_invalidate(&report),
+            Some(CachedCredential::SkypeSession)
+        );
     }
 
     #[test]
@@ -91,7 +96,10 @@ mod tests {
             body: "bad token".to_owned(),
         }
         .into();
-        assert_eq!(credential_to_invalidate(&report), Some(CachedCredential::access(spaces)));
+        assert_eq!(
+            credential_to_invalidate(&report),
+            Some(CachedCredential::access(spaces))
+        );
     }
 
     #[test]

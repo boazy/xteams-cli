@@ -13,8 +13,9 @@ const SEARCH_LIMIT: u32 = 15;
 pub async fn dispatch(verb: UserVerb, json: bool) -> Result<()> {
     let authenticator = auth::load_authenticator(AuthInteraction::from_json(json))?;
     match verb {
-        UserVerb::Search(args) => {
-            render(&substrate::search_people(&authenticator, &args.query, SEARCH_LIMIT).await?, json)
-        }
+        UserVerb::Search(args) => render(
+            &substrate::search_people(&authenticator, &args.query, SEARCH_LIMIT).await?,
+            json,
+        ),
     }
 }

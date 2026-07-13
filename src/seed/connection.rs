@@ -44,7 +44,10 @@ pub fn build_connection(
     let mut access_tokens = BTreeMap::new();
     access_tokens.insert(
         GRAPH.to_owned(),
-        AccessToken { expires_on: expires_on.to_owned(), access_token: token.to_owned() },
+        AccessToken {
+            expires_on: expires_on.to_owned(),
+            access_token: token.to_owned(),
+        },
     );
     Connection {
         active: true,
@@ -82,8 +85,15 @@ mod tests {
 
     #[test]
     fn builds_active_graph_connection() {
-        let conn =
-            build_connection("tok", "2026-07-09T15:30:00Z", Some("u@c.com"), "oid1", "tid1", "app1", "common");
+        let conn = build_connection(
+            "tok",
+            "2026-07-09T15:30:00Z",
+            Some("u@c.com"),
+            "oid1",
+            "tid1",
+            "app1",
+            "common",
+        );
         let v = serde_json::to_value(&conn).unwrap();
         assert_eq!(v["active"], serde_json::json!(true));
         assert_eq!(v["authType"], serde_json::json!("deviceCode"));

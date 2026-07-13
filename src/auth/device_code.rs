@@ -24,7 +24,10 @@ pub async fn login(http: &Client, tenant: &str) -> Result<String> {
 async fn request_code(http: &Client, tenant: &str) -> Result<DeviceCodeResponse> {
     let resp = http
         .post(oauth::devicecode_url(tenant))
-        .form(&[("client_id", FOCI_CLIENT), ("scope", oauth::scope_for(LOGIN_RESOURCE).as_str())])
+        .form(&[
+            ("client_id", FOCI_CLIENT),
+            ("scope", oauth::scope_for(LOGIN_RESOURCE).as_str()),
+        ])
         .send()
         .await?;
     let status = resp.status();

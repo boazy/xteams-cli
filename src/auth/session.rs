@@ -38,7 +38,10 @@ impl Session {
             .or_else(|| (!cookies.skypetoken.is_empty()).then(|| cookies.skypetoken.clone()))
             .ok_or(AuthError::NoSkypeToken)?;
         let gtms = parsed.gtms();
-        let chat_service = gtms.get("chatService").cloned().ok_or(AuthError::NoChatService)?;
+        let chat_service = gtms
+            .get("chatService")
+            .cloned()
+            .ok_or(AuthError::NoChatService)?;
         Ok(Self {
             skype_token,
             region: parsed.region.unwrap_or_default(),
@@ -69,7 +72,12 @@ pub(crate) async fn post_authz(
     bearer: &str,
     on_unauthorized: Option<CachedCredential>,
 ) -> Result<AuthzResponse> {
-    let resp = client.post(AUTHZ_URL).bearer_auth(bearer).json(&json!({})).send().await?;
+    let resp = client
+        .post(AUTHZ_URL)
+        .bearer_auth(bearer)
+        .json(&json!({}))
+        .send()
+        .await?;
     let status = resp.status();
     if status.is_success() {
         return Ok(resp.json::<AuthzResponse>().await?);
@@ -78,9 +86,17 @@ pub(crate) async fn post_authz(
     if status == reqwest::StatusCode::UNAUTHORIZED
         && let Some(credential) = on_unauthorized
     {
-        return Err(AuthError::AuthzUnauthorized { credential, body: truncate(&body, 240) }.into());
+        return Err(AuthError::AuthzUnauthorized {
+            credential,
+            body: truncate(&body, 240),
+        }
+        .into());
     }
-    Err(AuthError::Authz { status: status.as_u16(), body: truncate(&body, 240) }.into())
+    Err(AuthError::Authz {
+        status: status.as_u16(),
+        body: truncate(&body, 240),
+    }
+    .into())
 }
 
 /// Pull the JWT out of the `Bearer=<jwt>&Origin=...` cookie value.
@@ -119,14 +135,19 @@ struct Tokens {
 
 impl AuthzResponse {
     pub(crate) fn skype_token(&self) -> Option<String> {
-        self.tokens.as_ref().and_then(|t| t.skype_token.clone()).or_else(|| self.skype_token.clone())
+        self.tokens
+            .as_ref()
+            .and_then(|t| t.skype_token.clone())
+            .or_else(|| self.skype_token.clone())
     }
 
     pub(crate) fn gtms(&self) -> BTreeMap<String, String> {
         self.region_gtms
             .as_ref()
             .map(|m| {
-                m.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_owned()))).collect()
+                m.iter()
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_owned())))
+                    .collect()
             })
             .unwrap_or_default()
     }
@@ -141,7 +162,10 @@ mod tests {
     fn extract_bearer_from_cookie_and_bare_jwt() {
         let cookie = "Bearer%3DeyJhbGc.body.sig%26Origin%3Dhttps%3A%2F%2Fx";
         assert_eq!(extract_bearer(cookie).as_deref(), Some("eyJhbGc.body.sig"));
-        assert_eq!(extract_bearer("eyaaa.bbb.ccc").as_deref(), Some("eyaaa.bbb.ccc"));
+        assert_eq!(
+            extract_bearer("eyaaa.bbb.ccc").as_deref(),
+            Some("eyaaa.bbb.ccc")
+        );
         assert_eq!(extract_bearer("not-a-token"), None);
     }
 
@@ -156,7 +180,13 @@ mod tests {
         assert_eq!(parsed.skype_token().as_deref(), Some("sk-nested"));
         assert_eq!(parsed.region.as_deref(), Some("amer"));
         let gtms = parsed.gtms();
-        assert_eq!(gtms.get("chatService").map(String::as_str), Some("https://amer.ng.msg"));
-        assert!(!gtms.contains_key("ignored"), "non-string gtms entries are dropped");
+        assert_eq!(
+            gtms.get("chatService").map(String::as_str),
+            Some("https://amer.ng.msg")
+        );
+        assert!(
+            !gtms.contains_key("ignored"),
+            "non-string gtms entries are dropped"
+        );
     }
 }

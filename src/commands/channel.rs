@@ -26,9 +26,10 @@ pub async fn dispatch(verb: ChannelVerb, cookies: Option<&Path>, json: bool) -> 
             Some(team) => channels.into_iter().filter(|c| matches(c, &team)).collect(),
             None => channels,
         },
-        ChannelVerb::Search(args) => {
-            channels.into_iter().filter(|c| matches(c, &args.query)).collect()
-        }
+        ChannelVerb::Search(args) => channels
+            .into_iter()
+            .filter(|c| matches(c, &args.query))
+            .collect(),
     };
     render(&result, json)
 }

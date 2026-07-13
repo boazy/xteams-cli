@@ -33,13 +33,23 @@ impl ApiClient {
 
     fn chat(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/v1/users/ME/{path}", self.session.chat_service);
-        self.http
-            .request(method, url)
-            .header(AUTH_HEADER, format!("skypetoken={}", self.session.skype_token))
+        self.http.request(method, url).header(
+            AUTH_HEADER,
+            format!("skypetoken={}", self.session.skype_token),
+        )
     }
 
-    async fn exec(&self, request: reqwest::RequestBuilder, endpoint: &str) -> Result<reqwest::Response> {
-        send_ok(request, endpoint, self.session.credential.cached_credential()).await
+    async fn exec(
+        &self,
+        request: reqwest::RequestBuilder,
+        endpoint: &str,
+    ) -> Result<reqwest::Response> {
+        send_ok(
+            request,
+            endpoint,
+            self.session.credential.cached_credential(),
+        )
+        .await
     }
 }
 
@@ -57,11 +67,27 @@ pub(crate) async fn send_ok(
     if status.is_success() {
         return Ok(resp);
     }
-    let body: String = resp.text().await.unwrap_or_default().chars().take(240).collect();
+    let body: String = resp
+        .text()
+        .await
+        .unwrap_or_default()
+        .chars()
+        .take(240)
+        .collect();
     if status == reqwest::StatusCode::UNAUTHORIZED
         && let Some(credential) = credential
     {
-        return Err(ApiError::Unauthorized { endpoint: endpoint.to_owned(), credential, body }.into());
+        return Err(ApiError::Unauthorized {
+            endpoint: endpoint.to_owned(),
+            credential,
+            body,
+        }
+        .into());
     }
-    Err(ApiError::Http { endpoint: endpoint.to_owned(), status: status.as_u16(), body }.into())
+    Err(ApiError::Http {
+        endpoint: endpoint.to_owned(),
+        status: status.as_u16(),
+        body,
+    }
+    .into())
 }

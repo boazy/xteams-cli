@@ -31,7 +31,9 @@ pub struct AuthInteraction {
 impl AuthInteraction {
     pub fn from_json(json: bool) -> Self {
         let tty = std::io::stderr().is_terminal() && std::io::stdin().is_terminal();
-        Self { allow_prompt: !json && tty }
+        Self {
+            allow_prompt: !json && tty,
+        }
     }
 }
 
@@ -54,14 +56,19 @@ impl CacheLock {
     /// delete-and-continue, otherwise returns `TokenStoreError::LockHeld`.
     pub async fn acquire(interaction: AuthInteraction) -> Result<Self, TokenStoreError> {
         let dir = token_cache_io::store_dir()?;
-        std::fs::create_dir_all(&dir)
-            .map_err(|e| TokenStoreError::Lock { path: show(&dir), detail: e.to_string() })?;
+        std::fs::create_dir_all(&dir).map_err(|e| TokenStoreError::Lock {
+            path: show(&dir),
+            detail: e.to_string(),
+        })?;
         let path = dir.join(LOCK_FILE);
         loop {
             match try_create(&path) {
                 Ok(marker) => return Ok(Self { path, marker }),
                 Err(TryCreate::Io(detail)) => {
-                    return Err(TokenStoreError::Lock { path: show(&path), detail });
+                    return Err(TokenStoreError::Lock {
+                        path: show(&path),
+                        detail,
+                    });
                 }
                 Err(TryCreate::Held) => {
                     if handle_contention(&path, interaction)? {
@@ -88,11 +95,19 @@ enum TryCreate {
 }
 
 fn try_create(path: &Path) -> Result<String, TryCreate> {
-    let info = LockInfo { pid: std::process::id(), started_at: now_unix() };
+    let info = LockInfo {
+        pid: std::process::id(),
+        started_at: now_unix(),
+    };
     let marker = serde_json::to_string(&info).unwrap_or_else(|_| info.pid.to_string());
-    match std::fs::OpenOptions::new().write(true).create_new(true).open(path) {
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
         Ok(mut file) => {
-            file.write_all(marker.as_bytes()).map_err(|e| TryCreate::Io(e.to_string()))?;
+            file.write_all(marker.as_bytes())
+                .map_err(|e| TryCreate::Io(e.to_string()))?;
             Ok(marker)
         }
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(TryCreate::Held),
@@ -117,10 +132,17 @@ fn handle_contention(path: &Path, interaction: AuthInteraction) -> Result<bool, 
         return match std::fs::remove_file(path) {
             Ok(()) => Ok(true),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(true),
-            Err(e) => Err(TokenStoreError::Lock { path: show(path), detail: e.to_string() }),
+            Err(e) => Err(TokenStoreError::Lock {
+                path: show(path),
+                detail: e.to_string(),
+            }),
         };
     }
-    Err(TokenStoreError::LockHeld { path: show(path), since, age: age_text })
+    Err(TokenStoreError::LockHeld {
+        path: show(path),
+        since,
+        age: age_text,
+    })
 }
 
 /// The lock's start time, preferring its JSON `started_at`, falling back to the file
@@ -132,7 +154,10 @@ fn lock_started_at(path: &Path) -> Option<i64> {
         return Some(info.started_at);
     }
     let modified = std::fs::metadata(path).ok()?.modified().ok()?;
-    let secs = modified.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+    let secs = modified
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
     i64::try_from(secs).ok()
 }
 
@@ -140,14 +165,26 @@ fn lock_started_at(path: &Path) -> Option<i64> {
 /// the stderr-only convention of `device_code`, keeping stdout clean for `-j`.
 fn prompt_delete(path: &str, since: &str, age: &str) -> Result<bool, TokenStoreError> {
     let mut err = std::io::stderr();
-    let _ = writeln!(err, "\nA credential-refresh lock at {path} has been held since {since} ({age}).");
-    let _ = write!(err, "Another xteams may have crashed mid-refresh. Delete the lock and continue? [y/N] ");
+    let _ = writeln!(
+        err,
+        "\nA credential-refresh lock at {path} has been held since {since} ({age})."
+    );
+    let _ = write!(
+        err,
+        "Another xteams may have crashed mid-refresh. Delete the lock and continue? [y/N] "
+    );
     let _ = err.flush();
     let mut line = String::new();
     std::io::stdin()
         .read_line(&mut line)
-        .map_err(|e| TokenStoreError::Lock { path: path.to_owned(), detail: e.to_string() })?;
-    Ok(matches!(line.trim().to_ascii_lowercase().as_str(), "y" | "yes"))
+        .map_err(|e| TokenStoreError::Lock {
+            path: path.to_owned(),
+            detail: e.to_string(),
+        })?;
+    Ok(matches!(
+        line.trim().to_ascii_lowercase().as_str(),
+        "y" | "yes"
+    ))
 }
 
 fn humanize(age_secs: i64) -> String {

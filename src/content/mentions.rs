@@ -1,7 +1,8 @@
 //! `@{…}` mention tokens. After the body is converted to wire HTML, text nodes
 //! may carry mention tokens: `@{query}` (person, via people search), `@{#name}`
-//! (channel, via the CSA roster), or `@{<mri>|<Display Name>}` (explicit, no
-//! lookup). `parse` splits the HTML into literal pieces and specs; the command
+//! (channel, via the chat-service conversation list), or
+//! `@{<mri>|<Display Name>}` (explicit, no lookup). `parse` splits the HTML
+//! into literal pieces and specs; the command
 //! layer resolves each spec to an `(mri, display name)` pair; `assemble`
 //! re-emits the HTML with the Skype mention `<span>`s and builds the
 //! `properties.mentions` entries Teams needs for a mention to actually notify
@@ -39,7 +40,7 @@ pub struct Mention {
 pub enum MentionSpec {
     /// `@{query}` — resolve to a person via people search.
     Query(String),
-    /// `@{#name}` / `@{#team/name}` — resolve to a channel via the CSA roster.
+    /// `@{#name}` — resolve to a channel via the chat-service conversation list.
     ChannelQuery(String),
     /// `@{<mri>|<name>}` — caller supplied the MRI; no lookup.
     Explicit { mri: String, name: String },
@@ -109,7 +110,14 @@ pub fn parse(html: &str) -> Result<MentionDoc, ContentError> {
     let mut code_depth = 0usize;
     let mut rest = html;
     while !rest.is_empty() {
-        if rest.starts_with('<') {
+        if rest.starts_with("<!--") {
+            // An HTML comment is literal wholesale: a `>` inside it must not
+            // end the "tag", and a token inside it must not become a mention.
+            let len = rest.find("-->").map_or(rest.len(), |i| i + 3);
+            let (comment, after) = rest.split_at(len);
+            literal.push_str(comment);
+            rest = after;
+        } else if rest.starts_with('<') {
             let len = tag_end(rest);
             let (tag, after) = rest.split_at(len);
             adjust_code_depth(tag, &mut code_depth);
@@ -335,6 +343,22 @@ mod tests {
         assert_eq!(
             doc.assemble(&[]).0,
             "<p>@{nope} <code>x @{nope} y</code><pre>@{also}</pre></p>"
+        );
+    }
+
+    #[test]
+    fn html_comments_stay_literal_even_with_inner_gt() {
+        let html = "<p><!-- a > b, ping @{Bob} -->real @{8:orgid:abc|Ada}</p>";
+        let doc = parse(html).unwrap();
+        assert_eq!(
+            doc.specs().len(),
+            1,
+            "comment token must not become a mention"
+        );
+        let (out, _) = doc.assemble(&[explicit("8:orgid:abc", "Ada")]);
+        assert!(
+            out.starts_with("<p><!-- a > b, ping @{Bob} -->real "),
+            "{out}"
         );
     }
 

@@ -36,8 +36,14 @@ impl Authenticator {
     }
 
     /// `Some` iff a non-empty FRT is stored (used by the FRT-first `connect`).
-    pub fn try_load(http: Client, tenant: &str, interaction: AuthInteraction) -> Result<Option<Self>> {
-        let has_frt = token_cache_io::load()?.map(|c| !c.refresh_token.is_empty()).unwrap_or(false);
+    pub fn try_load(
+        http: Client,
+        tenant: &str,
+        interaction: AuthInteraction,
+    ) -> Result<Option<Self>> {
+        let has_frt = token_cache_io::load()?
+            .map(|c| !c.refresh_token.is_empty())
+            .unwrap_or(false);
         Ok(has_frt.then(|| Self::new(http, tenant, interaction)))
     }
 
@@ -50,17 +56,28 @@ impl Authenticator {
     }
 
     fn new(http: Client, tenant: &str, interaction: AuthInteraction) -> Self {
-        Self { http, tenant: tenant.to_owned(), interaction }
+        Self {
+            http,
+            tenant: tenant.to_owned(),
+            interaction,
+        }
     }
 
-    pub async fn authed(&self, resource: &str, method: Method, url: &str) -> Result<RequestBuilder> {
+    pub async fn authed(
+        &self,
+        resource: &str,
+        method: Method,
+        url: &str,
+    ) -> Result<RequestBuilder> {
         let token = self.token_for(resource).await?;
         Ok(self.http.request(method, url).bearer_auth(token))
     }
 
     /// The FRT (for seeding other CLIs); errors `NotLoggedIn` when absent/empty.
     pub fn refresh_token(&self) -> Result<String> {
-        let frt = token_cache_io::load()?.map(|c| c.refresh_token).unwrap_or_default();
+        let frt = token_cache_io::load()?
+            .map(|c| c.refresh_token)
+            .unwrap_or_default();
         if frt.is_empty() {
             return Err(OAuthError::NotLoggedIn.into());
         }
@@ -69,7 +86,9 @@ impl Authenticator {
 
     /// The cached identity (populated opportunistically from minted-token claims).
     pub fn identity(&self) -> Result<Identity> {
-        Ok(token_cache_io::load()?.map(|c| c.identity).unwrap_or_default())
+        Ok(token_cache_io::load()?
+            .map(|c| c.identity)
+            .unwrap_or_default())
     }
 
     pub async fn region(&self) -> Result<String> {
@@ -121,10 +140,14 @@ impl Authenticator {
             return Ok(skype.clone());
         }
         let credential = CachedCredential::access(SPACES_RESOURCE);
-        let parsed: AuthzResponse = session::post_authz(&self.http, &spaces, Some(credential)).await?;
+        let parsed: AuthzResponse =
+            session::post_authz(&self.http, &spaces, Some(credential)).await?;
         let skype_token = parsed.skype_token().ok_or(AuthError::NoSkypeToken)?;
         let gtms = parsed.gtms();
-        let chat_service = gtms.get("chatService").cloned().ok_or(AuthError::NoChatService)?;
+        let chat_service = gtms
+            .get("chatService")
+            .cloned()
+            .ok_or(AuthError::NoChatService)?;
         let stored = StoredSkypeSession {
             region: parsed.region.clone().unwrap_or_default(),
             expires_at: skype_expiry(&skype_token, &spaces, now_unix()),
@@ -226,7 +249,10 @@ mod tests {
         assert_eq!(skype_expiry(&skype, &spaces, 0), 1_500);
         assert_eq!(skype_expiry(&skype, "opaque", 0), 2_000);
         assert_eq!(skype_expiry("opaque", &spaces, 0), 1_500);
-        assert_eq!(skype_expiry("opaque", "opaque", 100), 100 + FALLBACK_SKYPE_TTL_SECS);
+        assert_eq!(
+            skype_expiry("opaque", "opaque", 100),
+            100 + FALLBACK_SKYPE_TTL_SECS
+        );
     }
 
     #[test]
@@ -242,7 +268,10 @@ mod tests {
 
         // A second, different token must not overwrite an already-populated identity.
         let other = serde_json::json!({ "upn": "other@c.com" }).to_string();
-        let other = format!("ey.{}.sig", base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(other));
+        let other = format!(
+            "ey.{}.sig",
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(other)
+        );
         set_identity_if_empty(&mut cache, &other);
         assert_eq!(cache.identity.upn.as_deref(), Some("u@c.com"));
     }

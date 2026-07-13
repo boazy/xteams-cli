@@ -45,10 +45,17 @@ pub fn load() -> Result<Option<TokenCache>, TokenStoreError> {
     let bytes = match fs::read(&path) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(TokenStoreError::Read { path: show(&path), detail: e.to_string() }),
+        Err(e) => {
+            return Err(TokenStoreError::Read {
+                path: show(&path),
+                detail: e.to_string(),
+            });
+        }
     };
-    let cache = serde_json::from_slice(&bytes)
-        .map_err(|e| TokenStoreError::Corrupt { path: show(&path), detail: e.to_string() })?;
+    let cache = serde_json::from_slice(&bytes).map_err(|e| TokenStoreError::Corrupt {
+        path: show(&path),
+        detail: e.to_string(),
+    })?;
     Ok(Some(cache))
 }
 
@@ -58,17 +65,25 @@ pub fn save(cache: &TokenCache) -> Result<(), TokenStoreError> {
     let dir = store_dir()?;
     ensure_dir(&dir)?;
     let path = dir.join(STORE_FILE);
-    let json = serde_json::to_vec_pretty(cache)
-        .map_err(|e| TokenStoreError::Write { path: show(&path), detail: e.to_string() })?;
+    let json = serde_json::to_vec_pretty(cache).map_err(|e| TokenStoreError::Write {
+        path: show(&path),
+        detail: e.to_string(),
+    })?;
 
     let tmp = dir.join(format!(".{STORE_FILE}.{}.tmp", uuid::Uuid::new_v4()));
     if let Err(detail) = write_private(&tmp, &json) {
         let _ = fs::remove_file(&tmp);
-        return Err(TokenStoreError::Write { path: show(&tmp), detail });
+        return Err(TokenStoreError::Write {
+            path: show(&tmp),
+            detail,
+        });
     }
     fs::rename(&tmp, &path).map_err(|e| {
         let _ = fs::remove_file(&tmp);
-        TokenStoreError::Write { path: show(&path), detail: e.to_string() }
+        TokenStoreError::Write {
+            path: show(&path),
+            detail: e.to_string(),
+        }
     })
 }
 
@@ -78,18 +93,27 @@ pub fn delete() -> Result<(), TokenStoreError> {
     match fs::remove_file(&path) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(TokenStoreError::Write { path: show(&path), detail: e.to_string() }),
+        Err(e) => Err(TokenStoreError::Write {
+            path: show(&path),
+            detail: e.to_string(),
+        }),
     }
 }
 
 fn ensure_dir(dir: &Path) -> Result<(), TokenStoreError> {
-    fs::create_dir_all(dir)
-        .map_err(|e| TokenStoreError::Write { path: show(dir), detail: e.to_string() })?;
+    fs::create_dir_all(dir).map_err(|e| TokenStoreError::Write {
+        path: show(dir),
+        detail: e.to_string(),
+    })?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
-        fs::set_permissions(dir, fs::Permissions::from_mode(0o700))
-            .map_err(|e| TokenStoreError::Write { path: show(dir), detail: e.to_string() })?;
+        fs::set_permissions(dir, fs::Permissions::from_mode(0o700)).map_err(|e| {
+            TokenStoreError::Write {
+                path: show(dir),
+                detail: e.to_string(),
+            }
+        })?;
     }
     Ok(())
 }
@@ -146,7 +170,10 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt as _;
-            let mode = fs::metadata(store_file().unwrap()).unwrap().permissions().mode();
+            let mode = fs::metadata(store_file().unwrap())
+                .unwrap()
+                .permissions()
+                .mode();
             assert_eq!(mode & 0o777, 0o600, "token store file must be owner-only");
         }
 

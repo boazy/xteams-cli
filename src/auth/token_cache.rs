@@ -43,7 +43,10 @@ pub struct StoredSkypeSession {
 
 impl TokenCache {
     pub fn new(refresh_token: String) -> Self {
-        Self { refresh_token, ..Default::default() }
+        Self {
+            refresh_token,
+            ..Default::default()
+        }
     }
 
     /// A cached access token for `resource` that is still valid at `now` with `skew`.
@@ -55,7 +58,8 @@ impl TokenCache {
     }
 
     pub fn set_access_token(&mut self, resource: &str, token: String, expires_at: i64) {
-        self.access_tokens.insert(resource.to_owned(), StoredAccessToken { token, expires_at });
+        self.access_tokens
+            .insert(resource.to_owned(), StoredAccessToken { token, expires_at });
     }
 
     /// The cached skype session if still valid at `now` with `skew`.
@@ -127,9 +131,18 @@ mod tests {
         let mut c = cache();
         c.set_access_token("https://substrate.office.com", "sub".to_owned(), 5_000);
         c.invalidate(&CachedCredential::access("https://graph.microsoft.com"));
-        assert!(c.valid_access_token("https://graph.microsoft.com", 0, 0).is_none());
-        assert_eq!(c.valid_access_token("https://substrate.office.com", 0, 0), Some("sub"));
-        assert!(c.skype.is_some(), "unrelated invalidation must not drop skype");
+        assert!(
+            c.valid_access_token("https://graph.microsoft.com", 0, 0)
+                .is_none()
+        );
+        assert_eq!(
+            c.valid_access_token("https://substrate.office.com", 0, 0),
+            Some("sub")
+        );
+        assert!(
+            c.skype.is_some(),
+            "unrelated invalidation must not drop skype"
+        );
     }
 
     #[test]
@@ -137,7 +150,10 @@ mod tests {
         let mut c = cache();
         c.set_access_token(super::super::SPACES_RESOURCE, "spaces".to_owned(), 5_000);
         c.invalidate(&CachedCredential::access(super::super::SPACES_RESOURCE));
-        assert!(c.skype.is_none(), "a rejected spaces token poisons the derived skype session");
+        assert!(
+            c.skype.is_none(),
+            "a rejected spaces token poisons the derived skype session"
+        );
     }
 
     #[test]
@@ -145,7 +161,10 @@ mod tests {
         let mut c = cache();
         c.invalidate(&CachedCredential::SkypeSession);
         assert!(c.skype.is_none());
-        assert_eq!(c.valid_access_token("https://graph.microsoft.com", 0, 0), Some("graph-tok"));
+        assert_eq!(
+            c.valid_access_token("https://graph.microsoft.com", 0, 0),
+            Some("graph-tok")
+        );
     }
 
     #[test]
@@ -153,6 +172,9 @@ mod tests {
         let json = serde_json::to_string(&cache()).expect("serialize");
         let back: TokenCache = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back.refresh_token, "frt-0");
-        assert_eq!(back.valid_access_token("https://graph.microsoft.com", 0, 0), Some("graph-tok"));
+        assert_eq!(
+            back.valid_access_token("https://graph.microsoft.com", 0, 0),
+            Some("graph-tok")
+        );
     }
 }

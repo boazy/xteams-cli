@@ -25,8 +25,8 @@ pub fn app_metadata_key(client_id: &str) -> String {
 
 pub fn build_cache(oid: &str, tid: &str, upn: &str, refresh_token: &str, client_id: &str) -> Value {
     let hoid = format!("{oid}.{tid}").to_lowercase();
-    let client_info =
-        base64::engine::general_purpose::STANDARD.encode(json!({ "uid": oid, "utid": tid }).to_string());
+    let client_info = base64::engine::general_purpose::STANDARD
+        .encode(json!({ "uid": oid, "utid": tid }).to_string());
 
     let mut account = Map::new();
     account.insert(
@@ -82,17 +82,26 @@ mod tests {
 
     #[test]
     fn keys_match_msal_derivation() {
-        assert_eq!(account_key(OID, TID), format!("{OID}.{TID}-login.microsoftonline.com-{TID}"));
+        assert_eq!(
+            account_key(OID, TID),
+            format!("{OID}.{TID}-login.microsoftonline.com-{TID}")
+        );
         assert_eq!(
             refresh_token_key(OID, TID),
             format!("{OID}.{TID}-login.microsoftonline.com-refreshtoken-1---")
         );
-        assert_eq!(app_metadata_key(CID), format!("appmetadata-login.microsoftonline.com-{CID}"));
+        assert_eq!(
+            app_metadata_key(CID),
+            format!("appmetadata-login.microsoftonline.com-{CID}")
+        );
     }
 
     #[test]
     fn keys_are_lowercased() {
-        assert_eq!(app_metadata_key("ABC-DEF"), "appmetadata-login.microsoftonline.com-abc-def");
+        assert_eq!(
+            app_metadata_key("ABC-DEF"),
+            "appmetadata-login.microsoftonline.com-abc-def"
+        );
     }
 
     #[test]

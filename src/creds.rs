@@ -102,8 +102,9 @@ fn read_encrypted_cookies(cookies_db: &Path) -> Result<Vec<(String, Vec<u8>)>> {
 }
 
 fn query_cookies(db: &Path) -> Result<Vec<(String, Vec<u8>)>> {
-    let conn = rusqlite::Connection::open_with_flags(db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .context("opening cookie DB copy")?;
+    let conn =
+        rusqlite::Connection::open_with_flags(db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .context("opening cookie DB copy")?;
     let mut stmt = conn.prepare(
         "SELECT name, encrypted_value FROM cookies \
          WHERE name IN ('authtoken', 'skypetoken_asm')",

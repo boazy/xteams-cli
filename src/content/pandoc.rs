@@ -118,9 +118,13 @@ pub fn run(from: &str, to: &str, input: &str, extra: &[String]) -> Result<String
         .spawn()
         .map_err(ContentError::PandocSpawn)?;
     if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(input.as_bytes()).map_err(ContentError::PandocSpawn)?;
+        stdin
+            .write_all(input.as_bytes())
+            .map_err(ContentError::PandocSpawn)?;
     }
-    let output = child.wait_with_output().map_err(ContentError::PandocSpawn)?;
+    let output = child
+        .wait_with_output()
+        .map_err(ContentError::PandocSpawn)?;
     if !output.status.success() {
         return Err(ContentError::Pandoc {
             from: from.to_owned(),

@@ -65,5 +65,7 @@ fn token_type_label(token_type: TokenType) -> &'static str {
 
 fn expires_on_rfc3339(ttl_secs: Option<i64>) -> String {
     let secs = ttl_secs.unwrap_or(3600);
-    (OffsetDateTime::now_utc() + time::Duration::seconds(secs)).format(&Rfc3339).unwrap_or_default()
+    (OffsetDateTime::now_utc() + time::Duration::seconds(secs))
+        .format(&Rfc3339)
+        .unwrap_or_default()
 }

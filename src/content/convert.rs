@@ -32,7 +32,8 @@ pub fn plain_to_html(text: &str) -> String {
 /// Render CommonMark (plus tables, strikethrough, and task lists) into HTML.
 /// pulldown-cmark wraps blocks in `<p>…</p>`, matching Teams' RichText/Html.
 pub fn markdown_to_html(markdown: &str) -> String {
-    let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
+    let options =
+        Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
     let parser = Parser::new_ext(markdown, options);
     let mut html = String::with_capacity(markdown.len() * 3 / 2);
     pulldown_cmark::html::push_html(&mut html, parser);
@@ -58,5 +59,7 @@ pub fn html_to_text(html: &str) -> Result<String, ContentError> {
 /// Best-effort trimmed plain-text rendering for previews (never fails; falls
 /// back to the raw HTML if parsing errors).
 pub fn html_to_preview(html: &str) -> String {
-    html_to_text(html).map(|text| text.trim().to_owned()).unwrap_or_else(|_| html.to_owned())
+    html_to_text(html)
+        .map(|text| text.trim().to_owned())
+        .unwrap_or_else(|_| html.to_owned())
 }

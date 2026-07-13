@@ -40,14 +40,22 @@ pub fn jwt_audience_and_ttl(jwt: &str) -> (Option<String>, Option<i64>) {
     let Some(claims) = decode_claims(jwt) else {
         return (None, None);
     };
-    let audience = claims.get("aud").and_then(|v| v.as_str()).map(str::to_owned);
-    let ttl = claims.get("exp").and_then(serde_json::Value::as_i64).map(|exp| exp - now_unix());
+    let audience = claims
+        .get("aud")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
+    let ttl = claims
+        .get("exp")
+        .and_then(serde_json::Value::as_i64)
+        .map(|exp| exp - now_unix());
     (audience, ttl)
 }
 
 /// The absolute `exp` (unix seconds) of a JWT, if it is a decodable JWT with `exp`.
 pub fn jwt_expiry(jwt: &str) -> Option<i64> {
-    decode_claims(jwt)?.get("exp").and_then(serde_json::Value::as_i64)
+    decode_claims(jwt)?
+        .get("exp")
+        .and_then(serde_json::Value::as_i64)
 }
 
 /// Extract the seed-relevant identity claims (`oid`, `upn`, `tid`) from a Graph
@@ -66,7 +74,9 @@ pub fn graph_identity(jwt: &str) -> GraphIdentity {
 
 fn decode_claims(jwt: &str) -> Option<serde_json::Map<String, serde_json::Value>> {
     let payload = jwt.split('.').nth(1)?;
-    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload).ok()?;
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload)
+        .ok()?;
     serde_json::from_slice(&bytes).ok()
 }
 
@@ -96,7 +106,8 @@ mod tests {
 
     #[test]
     fn jwt_audience_and_ttl_reads_aud_and_remaining_minutes() {
-        let (aud, ttl) = jwt_audience_and_ttl(&fake_jwt("https://graph.microsoft.com", now_unix() + 3600));
+        let (aud, ttl) =
+            jwt_audience_and_ttl(&fake_jwt("https://graph.microsoft.com", now_unix() + 3600));
         assert_eq!(aud.as_deref(), Some("https://graph.microsoft.com"));
         let ttl = ttl.expect("ttl should decode");
         assert!(ttl > 3500 && ttl <= 3600, "expected ~1h ttl, got {ttl}");
@@ -118,7 +129,8 @@ mod tests {
 
     #[test]
     fn identity_from_jwt_prefers_upn_then_preferred_username() {
-        let jwt = fake_jwt_claims(serde_json::json!({ "preferred_username": "p@c.com", "tid": "t" }));
+        let jwt =
+            fake_jwt_claims(serde_json::json!({ "preferred_username": "p@c.com", "tid": "t" }));
         let id = identity_from_jwt(&jwt);
         assert_eq!(id.upn.as_deref(), Some("p@c.com"));
         assert_eq!(id.tenant.as_deref(), Some("t"));
@@ -132,9 +144,15 @@ mod tests {
             "tid": "22222222-2222-2222-2222-222222222222",
         }));
         let id = graph_identity(&jwt);
-        assert_eq!(id.oid.as_deref(), Some("11111111-1111-1111-1111-111111111111"));
+        assert_eq!(
+            id.oid.as_deref(),
+            Some("11111111-1111-1111-1111-111111111111")
+        );
         assert_eq!(id.upn.as_deref(), Some("user@contoso.com"));
-        assert_eq!(id.tid.as_deref(), Some("22222222-2222-2222-2222-222222222222"));
+        assert_eq!(
+            id.tid.as_deref(),
+            Some("22222222-2222-2222-2222-222222222222")
+        );
     }
 
     #[test]

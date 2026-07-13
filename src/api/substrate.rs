@@ -34,6 +34,11 @@ pub async fn search_people(auth: &Authenticator, query: &str, limit: u32) -> Res
         .header("Origin", TEAMS_ORIGIN)
         .header("Referer", format!("{TEAMS_ORIGIN}/"))
         .json(&body);
-    let resp = send_ok(request, "POST substrate suggestions", Some(CachedCredential::access(SUBSTRATE))).await?;
+    let resp = send_ok(
+        request,
+        "POST substrate suggestions",
+        Some(CachedCredential::access(SUBSTRATE)),
+    )
+    .await?;
     Ok(resp.json::<SubstrateSuggestions>().await?.people())
 }

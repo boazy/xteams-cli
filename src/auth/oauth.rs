@@ -103,7 +103,9 @@ pub fn parse_token(body: &[u8]) -> Result<TokenResponse, OAuthError> {
 
 /// The AAD `error` code from a non-200 token response, if the body is parseable.
 pub fn error_code(body: &[u8]) -> Option<String> {
-    serde_json::from_slice::<OAuthErrorBody>(body).ok().map(|body| body.error)
+    serde_json::from_slice::<OAuthErrorBody>(body)
+        .ok()
+        .map(|body| body.error)
 }
 
 #[cfg(test)]
@@ -117,7 +119,10 @@ mod tests {
     #[test]
     fn classify_poll_returns_complete_on_200() {
         let outcome = classify_poll(200, TOKENS).expect("200 body should parse");
-        assert!(matches!(outcome, PollOutcome::Complete(_)), "expected PollOutcome::Complete");
+        assert!(
+            matches!(outcome, PollOutcome::Complete(_)),
+            "expected PollOutcome::Complete"
+        );
         if let PollOutcome::Complete(tokens) = outcome {
             assert_eq!(tokens.refresh_token.as_deref(), Some("0.rt"));
             assert_eq!(tokens.expires_in, Some(3599));
@@ -126,19 +131,34 @@ mod tests {
 
     #[test]
     fn classify_poll_maps_pending_and_slow_down() {
-        assert!(matches!(classify_poll(400, PENDING), Ok(PollOutcome::Pending)));
+        assert!(matches!(
+            classify_poll(400, PENDING),
+            Ok(PollOutcome::Pending)
+        ));
         let slow = br#"{"error":"slow_down"}"#;
-        assert!(matches!(classify_poll(400, slow), Ok(PollOutcome::SlowDown)));
+        assert!(matches!(
+            classify_poll(400, slow),
+            Ok(PollOutcome::SlowDown)
+        ));
     }
 
     #[test]
     fn classify_poll_maps_terminal_errors() {
         let declined = br#"{"error":"authorization_declined"}"#;
-        assert!(matches!(classify_poll(400, declined), Err(OAuthError::AuthorizationDeclined)));
+        assert!(matches!(
+            classify_poll(400, declined),
+            Err(OAuthError::AuthorizationDeclined)
+        ));
         let expired = br#"{"error":"expired_token"}"#;
-        assert!(matches!(classify_poll(400, expired), Err(OAuthError::DeviceCodeExpired)));
+        assert!(matches!(
+            classify_poll(400, expired),
+            Err(OAuthError::DeviceCodeExpired)
+        ));
         let other = br#"{"error":"invalid_grant","error_description":"bad"}"#;
-        assert!(matches!(classify_poll(400, other), Err(OAuthError::TokenEndpoint { .. })));
+        assert!(matches!(
+            classify_poll(400, other),
+            Err(OAuthError::TokenEndpoint { .. })
+        ));
     }
 
     #[test]

@@ -96,15 +96,20 @@ pub fn derive_cookie_key() -> Result<CookieKey> {
         .ok_or_else(|| CredsError::Windows("os_crypt key missing 'DPAPI' prefix".to_owned()))?;
     let raw = dpapi_unprotect(blob)?;
     raw.as_slice().try_into().map_err(|_| {
-        CredsError::Windows(format!("DPAPI key was {} bytes, expected {AES256_KEY_LEN}", raw.len()))
-            .into()
+        CredsError::Windows(format!(
+            "DPAPI key was {} bytes, expected {AES256_KEY_LEN}",
+            raw.len()
+        ))
+        .into()
     })
 }
 
 /// Decrypt one Chromium `v10`/`v11` (AES-256-GCM) cookie value; `None` if not
 /// decryptable/printable.
 pub fn decrypt_value(enc: &[u8], key: &CookieKey) -> Option<String> {
-    let body = enc.strip_prefix(b"v10").or_else(|| enc.strip_prefix(b"v11"))?;
+    let body = enc
+        .strip_prefix(b"v10")
+        .or_else(|| enc.strip_prefix(b"v11"))?;
     let (nonce, ciphertext) = body.split_at_checked(GCM_NONCE_LEN)?;
     let nonce = Nonce::<Aes256Gcm>::try_from(nonce).ok()?;
     let cipher = Aes256Gcm::new_from_slice(key.as_slice()).ok()?;

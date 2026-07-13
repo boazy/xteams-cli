@@ -23,7 +23,10 @@ impl Conversation {
     }
 
     pub fn topic(&self) -> &str {
-        self.thread_properties.as_ref().and_then(|t| t.topic.as_deref()).unwrap_or("")
+        self.thread_properties
+            .as_ref()
+            .and_then(|t| t.topic.as_deref())
+            .unwrap_or("")
     }
 }
 
@@ -79,7 +82,10 @@ impl Message {
     }
 
     pub fn time_key(&self) -> &str {
-        self.original_arrival_time.as_deref().or(self.compose_time.as_deref()).unwrap_or("")
+        self.original_arrival_time
+            .as_deref()
+            .or(self.compose_time.as_deref())
+            .unwrap_or("")
     }
 }
 
@@ -138,7 +144,8 @@ pub struct Team {
 impl Team {
     pub fn matches(&self, query: &str) -> bool {
         let needle = query.to_lowercase();
-        self.display_name.to_lowercase().contains(&needle) || self.id.to_lowercase().contains(&needle)
+        self.display_name.to_lowercase().contains(&needle)
+            || self.id.to_lowercase().contains(&needle)
     }
 }
 
@@ -235,7 +242,10 @@ pub struct SubstrateSuggestions {
 
 impl SubstrateSuggestions {
     pub fn people(self) -> Vec<Person> {
-        self.groups.into_iter().flat_map(|group| group.suggestions).collect()
+        self.groups
+            .into_iter()
+            .flat_map(|group| group.suggestions)
+            .collect()
     }
 }
 

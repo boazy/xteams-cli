@@ -44,7 +44,9 @@ pub fn derive_cookie_key() -> Result<CookieKey> {
 
 /// Decrypt one Chromium `v10`/`v11` cookie value; `None` if not decryptable/printable.
 pub fn decrypt_value(enc: &[u8], key: &CookieKey) -> Option<String> {
-    let body = enc.strip_prefix(b"v10").or_else(|| enc.strip_prefix(b"v11"))?;
+    let body = enc
+        .strip_prefix(b"v10")
+        .or_else(|| enc.strip_prefix(b"v11"))?;
     let iv = [b' '; 16];
     let plain = Aes128CbcDec::new_from_slices(key, &iv)
         .ok()?
@@ -89,7 +91,11 @@ mod tests {
     fn encrypt_v10(key: &CookieKey, plain: &[u8]) -> Vec<u8> {
         let iv = [b' '; 16];
         let mut enc = b"v10".to_vec();
-        enc.extend(Aes128CbcEnc::new_from_slices(key, &iv).unwrap().encrypt_padded_vec::<Pkcs7>(plain));
+        enc.extend(
+            Aes128CbcEnc::new_from_slices(key, &iv)
+                .unwrap()
+                .encrypt_padded_vec::<Pkcs7>(plain),
+        );
         enc
     }
 
@@ -97,11 +103,17 @@ mod tests {
     fn decrypt_value_round_trips_v10_and_v11() {
         let key: CookieKey = [7u8; 16];
         let enc = encrypt_v10(&key, b"authtoken-value-123");
-        assert_eq!(decrypt_value(&enc, &key).as_deref(), Some("authtoken-value-123"));
+        assert_eq!(
+            decrypt_value(&enc, &key).as_deref(),
+            Some("authtoken-value-123")
+        );
         // Same ciphertext under the `v11` tag decrypts identically.
         let mut v11 = enc.clone();
         v11[..3].copy_from_slice(b"v11");
-        assert_eq!(decrypt_value(&v11, &key).as_deref(), Some("authtoken-value-123"));
+        assert_eq!(
+            decrypt_value(&v11, &key).as_deref(),
+            Some("authtoken-value-123")
+        );
     }
 
     #[test]

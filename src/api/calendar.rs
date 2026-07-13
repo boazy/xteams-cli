@@ -27,6 +27,11 @@ pub async fn calendar_view(auth: &Authenticator, days: i64) -> Result<Vec<Calend
             ("$orderby", "start/dateTime".to_owned()),
             ("$top", "50".to_owned()),
         ]);
-    let resp = send_ok(request, "GET graph calendarView", Some(CachedCredential::access(GRAPH))).await?;
+    let resp = send_ok(
+        request,
+        "GET graph calendarView",
+        Some(CachedCredential::access(GRAPH)),
+    )
+    .await?;
     Ok(resp.json::<CalendarView>().await?.value)
 }
